@@ -22,7 +22,8 @@ button{font-family:inherit;cursor:pointer}
 input,select,textarea{font-family:inherit;font-size:16px}
 
 /* ===== ヘッダー ===== */
-header{position:sticky;top:0;z-index:30;background:var(--accent);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;display:flex;align-items:center;gap:8px;box-shadow:0 2px 10px rgba(31,46,40,.18)}
+header{position:sticky;top:0;z-index:30;background:var(--accent);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;box-shadow:0 2px 10px rgba(31,46,40,.18)}
+header .hwrap{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:8px}
 header .ttl{font-size:16px;font-weight:800;letter-spacing:.04em;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 header .ttl small{display:block;font-size:10px;font-weight:600;opacity:.78;letter-spacing:.1em}
 .hbtn{border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:9px;padding:7px 10px;font-size:12px;font-weight:700;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:4px}
@@ -34,12 +35,23 @@ header .ttl small{display:block;font-size:10px;font-weight:600;opacity:.78;lette
 #mockBanner{display:none;background:#fbeed6;color:#8a5a12;font-size:11.5px;font-weight:700;text-align:center;padding:7px 12px;line-height:1.5;border-bottom:1px solid #eeddb8}
 
 /* ===== タブ ===== */
-.tabs{position:sticky;top:calc(env(safe-area-inset-top) + 54px);z-index:25;display:flex;gap:5px;padding:10px 12px 8px;background:linear-gradient(var(--bg) 82%,rgba(238,245,241,0));max-width:760px;margin:0 auto;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.tab{flex:1 0 auto;border:1.5px solid var(--line);background:var(--card);color:var(--sub);border-radius:12px;padding:9px 10px;font-size:12.5px;font-weight:800;white-space:nowrap}
+.tabs{position:sticky;top:calc(env(safe-area-inset-top) + 54px);z-index:25;display:flex;gap:6px;padding:10px 14px 8px;background:linear-gradient(var(--bg) 82%,rgba(238,245,241,0));max-width:1280px;margin:0 auto;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{flex:0 0 auto;border:1.5px solid var(--line);background:var(--card);color:var(--sub);border-radius:12px;padding:9px 22px;font-size:13px;font-weight:800;white-space:nowrap}
 .tab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+@media(max-width:760px){.tab{flex:1 0 auto;padding:9px 10px;font-size:12.5px}}
 
-/* ===== 本文 ===== */
-main{padding:4px 14px 0;max-width:760px;margin:0 auto}
+/* ===== 本文（PC基準・max 1280px） ===== */
+main{padding:4px 14px 0;max-width:1280px;margin:0 auto}
+
+/* ===== PCグリッド（スマホは自動で1カラム） ===== */
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr));gap:10px;align-items:stretch}
+.mgrid .mcard{margin-bottom:0}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(420px,100%),1fr));gap:8px;align-items:stretch}
+.rgrid .rrow,.rgrid .setrow{margin-bottom:0}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(480px,100%),1fr));gap:10px;align-items:start}
+.vgrid .vcard{margin-bottom:0}
+.det2col{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+@media(max-width:900px){.det2col{grid-template-columns:1fr}}
 .sechead{font-size:12px;font-weight:800;color:var(--sub);letter-spacing:.06em;margin:16px 2px 8px;display:flex;align-items:center;gap:6px}
 .sechead::after{content:"";flex:1;height:1px;background:var(--line)}
 
@@ -76,6 +88,7 @@ main{padding:4px 14px 0;max-width:760px;margin:0 auto}
 .badge.stale-mid{background:#fbeed6;color:var(--stale-mid)}
 .badge.stale-bad{background:#f7e0d8;color:var(--stale-bad)}
 .badge.wverify{background:#e6eef8;color:var(--info)}
+.feemuted{font-size:10px;color:var(--sub);font-weight:700;align-self:center;white-space:nowrap}
 .badge.unconf{background:#e6eef8;color:var(--info);padding:1px 6px}
 .badge.confd{background:#e7f4ec;color:var(--ok)}
 
@@ -210,9 +223,11 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
 <body>
 
 <header>
-  <div class="ttl">🏬 市場管理ボード<small>HAYASHI LUMBER — 市場・在庫・売上</small></div>
-  <button id="srcBadge">…</button>
-  <a class="hbtn" id="sheetBtn" target="_blank" style="display:none">📊</a>
+  <div class="hwrap">
+    <div class="ttl">🏬 市場管理ボード<small>HAYASHI LUMBER — 市場・在庫・売上</small></div>
+    <button id="srcBadge">…</button>
+    <a class="hbtn" id="sheetBtn" target="_blank" style="display:none">📊</a>
+  </div>
 </header>
 <div id="mockBanner">⚠ API未接続（サンプルデータ表示中）</div>
 
@@ -272,6 +287,7 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
       </div>
       <div class="fld"><label>ledger突合キー</label><input type="text" id="mkLedgerKey" placeholder="空欄＝市場名と同一"></div>
       <div class="fld"><label>帳票名</label><input type="text" id="mkDocType" placeholder="不落明細書 等"></div>
+      <div class="fld"><label>精算書フォルダURL（Drive）</label><input type="text" id="mkDrive" placeholder="https://drive.google.com/drive/folders/…"></div>
       <div class="chkrow"><input type="checkbox" id="mkActive" checked><label style="margin:0">有効（OFFで一覧から隠す）</label></div>
       <div class="fld"><label>備考</label><textarea id="mkNote" placeholder="運用メモ（任意）"></textarea></div>
       <div class="merr" id="mkErr"></div>
@@ -344,7 +360,7 @@ let MARKETS=[], SALES=[], STOCK=[], STOCKBYMARKET=[], RITAI=[], SHORTAGE=[], NAI
 let SHEET_URL="", TODAY="", FYSTART="";
 let TAB="summary";
 let curMarket="";        // 詳細タブの選択市場
-let ritaiFilter="all";   // all | 3 | 6
+let ritaiFilter="0.5";   // 0.5 | 3 | 6（半年未満は常に対象外）
 let editShId=null, editStId=null, editMkKey=null;
 
 /* ===== 資格情報（共通SSO） ===== */
@@ -389,10 +405,13 @@ function sizeLabel(o){
 function staleClass(y){ y=Number(y)||0; if(y>=6) return "stale-bad"; if(y>=3) return "stale-mid"; return "stale-ok"; }
 function staleBadge(years,approx){
   if(years==null||years==="") return "";
+  if(Number(years)<0.5) return "";   /* 半年未満は滞留扱いしない */
   const y=Math.floor(Number(years)*10)/10;
   const cls=staleClass(y);
   return `<span class="badge ${cls}">${approx?"≈":""}${y}年</span>`;
 }
+
+function fmtRatePct(v){ v=Number(v)||0; return (Math.round(v*100)/100).toString(); }
 
 /* ===== 商流バッジ ===== */
 function shoryuBadge(s){
@@ -480,10 +499,11 @@ function salesOf(market){ return SALES.find(s=>s.market===market)||null; }
 function stockByOf(market){ return STOCKBYMARKET.find(s=>s.market===market)||null; }
 function marketOf(name){ return MARKETS.find(m=>m.market===name)||null; }
 function activeMarkets(){ return MARKETS.filter(m=>m.active!==false); }
-function staleBundlesOf(market){ // 3年以上の束数合計
-  let b=0; RITAI.forEach(r=>{ if(r.market===market && (Number(r.years)||0)>=3) b+=Number(r.bundles)||0; }); return b;
+function staleBundlesOf(market){ // 半年以上の束数合計
+  let b=0; RITAI.forEach(r=>{ if(r.market===market && (Number(r.years)||0)>=0.5) b+=Number(r.bundles)||0; }); return b;
 }
-function lackSpecsOf(market){ return SHORTAGE.filter(s=>s.market===market && (Number(s.lack)||0)>0).length; }
+function isDirectMarket(name){ const m=marketOf(name); return !!(m&&m.stockMethod==="直接"); }
+function lackSpecsOf(market){ if(!isDirectMarket(market)) return 0; return SHORTAGE.filter(s=>s.market===market && (Number(s.lack)||0)>0).length; }
 function checkWarnOf(market){ const sb=stockByOf(market); return sb&&sb.checkWarn; }
 function hasUnverified(market){ return STOCK.some(r=>r.market===market && !r.confirmed); }
 /* GAS側のキー表記ゆれ吸収（camel / snake 両対応） */
@@ -516,9 +536,9 @@ function renderSummary(){
   html+=`<div class="sumcard" style="--cc:var(--warn)"><div class="th">滞留（3年+）</div><div class="val">${num(totStale)}<small>束</small></div><div class="sub2">要資金化</div></div>`;
   html+='</div>';
 
-  // カード（売上降順）
+  // カード（売上降順・PCは2〜3カラムグリッド）
   const sorted=mks.slice().sort((a,b)=>{ const sa=salesOf(a.market), sb=salesOf(b.market); return (sb?Number(sb.fySales)||0:0)-(sa?Number(sa.fySales)||0:0); });
-  html+='<div class="sechead">🏬 市場一覧（売上降順）</div>';
+  html+='<div class="sechead">🏬 市場一覧（売上降順）</div><div class="mgrid">';
   sorted.forEach(m=>{
     const s=salesOf(m.market), sb=stockByOf(m.market);
     const cc=shoryuColor(m.shoryu);
@@ -531,7 +551,8 @@ function renderSummary(){
     const reqConfirm=(m.stockMethod==="要確認");
     let badges='';
     badges+=shoryuBadge(m.shoryu);
-    if(fee&&fee!=="—") badges+=`<span class="badge rate">手数料 ${esc(fee)}</span>`;
+    if(fee&&fee!=="—"&&fee!=="契約型") badges+=`<span class="badge rate">手数料 ${esc(fee)}</span>`;
+    if(m.shoryu==="契約型"&&s&&s.feeRateActual!=null&&isFinite(Number(s.feeRateActual))) badges+=`<span class="feemuted">契約型・実測${fmtRatePct(s.feeRateActual)}%</span>`;
     if(stale>0) badges+=`<span class="badge wstale">⏳ 滞留${num(stale)}束</span>`;
     if(lackN>0) badges+=`<span class="badge wlack">⚠ 不足${lackN}規格</span>`;
     if(chkWarn) badges+=`<span class="badge wcheck">⚠ 要確認</span>`;
@@ -544,6 +565,7 @@ function renderSummary(){
       <div class="mbadges">${badges}</div>
     </div>`;
   });
+  html+='</div>';
   $("list").innerHTML=html;
 }
 function openDetail(market){
@@ -565,10 +587,17 @@ function renderDetail(){
     + mks.map(x=>`<option value="${esc(x.market)}"${x.market===curMarket?" selected":""}>${esc(x.market)}</option>`).join('')
     + '</select></div>';
   // ヘッダー
+  let feeHtml="";
+  if(s&&s.feeRateShown&&s.feeRateShown!=="—"){
+    if(s.feeRateShown==="契約型"&&s.feeRateActual!=null&&isFinite(Number(s.feeRateActual)))
+      feeHtml=`<span>手数料 <b>契約型</b><span class="feemuted">（実測${fmtRatePct(s.feeRateActual)}%）</span></span>`;
+    else feeHtml=`<span>手数料 <b>${esc(s.feeRateShown)}</b></span>`;
+  }
   html+=`<div class="dethead"><div class="dn">${esc(m.market)}</div>
-    <div class="dm">${shoryuBadge(m.shoryu)}<span>在庫把握 <b>${esc(m.stockMethod||"—")}</b></span>${sb&&sb.latestSnapDate?`<span>最新スナップ <b>${esc(sb.latestSnapDate)}</b></span>`:""}${s&&s.feeRateShown&&s.feeRateShown!=="—"?`<span>手数料 <b>${esc(s.feeRateShown)}</b></span>`:""}</div></div>`;
+    <div class="dm">${shoryuBadge(m.shoryu)}<span>在庫把握 <b>${esc(m.stockMethod||"—")}</b></span>${sb&&sb.latestSnapDate?`<span>最新スナップ <b>${esc(sb.latestSnapDate)}</b></span>`:""}${feeHtml}${m.driveFolder?`<a class="vpdf" href="${esc(m.driveFolder)}" target="_blank" style="padding:6px 10px">📁 精算書フォルダ</a>`:""}</div></div>`;
 
-  // 月別売上
+  // 月別売上＋内藤運賃（PCは横並び2カラム）
+  html+='<div class="det2col"><div>';
   html+='<div class="sechead">📈 月別売上（今期）</div>';
   const monthly=(s&&s.monthly)||[];
   if(monthly.length){
@@ -581,6 +610,19 @@ function renderDetail(){
     bars+='</div></div>';
     html+=bars;
   } else html+='<div class="trend" style="text-align:center;color:var(--sub);font-size:12px;padding:22px 0">今期の売上データがありません</div>';
+  html+='</div><div>';
+
+  // 内藤運賃（2カラム右側）
+  html+='<div class="sechead">🚚 内藤運輸 運賃（束単価）</div>';
+  const nrow=m.naitoName ? (NAITO.rows||[]).find(x=>x.name===m.naitoName) : null;
+  if(nrow){
+    html+=`<div class="tblwrap"><table class="subtbl"><thead><tr><th>取引先</th><th>4m</th><th>3m</th><th>2m</th></tr></thead><tbody>
+      <tr><td>${esc(nrow.name)}</td><td>¥${yen(nrow.m4)}</td><td>¥${yen(nrow.m3)}</td><td>¥${yen(nrow.m2)}</td></tr>
+    </tbody></table></div>`;
+  } else {
+    html+='<div class="trend" style="text-align:center;color:var(--sub);font-size:12px;padding:18px 0">内藤運賃: 対応なし（設定で取引先名を紐付け）</div>';
+  }
+  html+='</div></div>';
 
   // 在庫明細
   html+='<div class="sechead">📦 在庫明細</div>';
@@ -605,17 +647,6 @@ function renderDetail(){
     html+='<div class="trend" style="text-align:center;color:var(--sub);font-size:12px;padding:22px 0">在庫明細がありません</div>';
   }
 
-  // 内藤運賃
-  html+='<div class="sechead">🚚 内藤運輸 運賃（束単価）</div>';
-  const nrow=m.naitoName ? (NAITO.rows||[]).find(x=>x.name===m.naitoName) : null;
-  if(nrow){
-    html+=`<div class="tblwrap"><table class="subtbl"><thead><tr><th>取引先</th><th>4m</th><th>3m</th><th>2m</th></tr></thead><tbody>
-      <tr><td>${esc(nrow.name)}</td><td>¥${yen(nrow.m4)}</td><td>¥${yen(nrow.m3)}</td><td>¥${yen(nrow.m2)}</td></tr>
-    </tbody></table></div>`;
-  } else {
-    html+='<div class="trend" style="text-align:center;color:var(--sub);font-size:12px;padding:18px 0">内藤運賃: 対応なし（設定で取引先名を紐付け）</div>';
-  }
-
   // 手動在庫追加
   html+=`<button class="linkbtn" style="border-color:var(--accent);color:#fff;background:var(--accent);margin-top:14px" onclick="openStockNew('${esc(m.market)}')">＋ 在庫を手動追加</button>`;
   $("list").innerHTML=html;
@@ -623,18 +654,20 @@ function renderDetail(){
 
 /* ===== 画面③ 滞留在庫ランキング ===== */
 function renderRitai(){
-  let list=RITAI.slice().sort((a,b)=>(Number(b.years)||0)-(Number(a.years)||0));
+  const base=RITAI.filter(r=>(Number(r.years)||0)>=0.5);  /* 半年未満は対象外 */
+  let list=base.slice().sort((a,b)=>(Number(b.years)||0)-(Number(a.years)||0));
   if(ritaiFilter==="3") list=list.filter(r=>(Number(r.years)||0)>=3);
   else if(ritaiFilter==="6") list=list.filter(r=>(Number(r.years)||0)>=6);
   let html='<div class="pchips">'
-    + chip("all","全て") + chip("3","3年以上") + chip("6","6年以上") + '</div>';
+    + chip("0.5","半年以上") + chip("3","3年以上") + chip("6","6年以上") + '</div>';
   // 上部サマリー
-  const maxY=RITAI.reduce((m,r)=>Math.max(m,Number(r.years)||0),0);
+  const maxY=base.reduce((m,r)=>Math.max(m,Number(r.years)||0),0);
   let totB=0; list.forEach(r=>totB+=Number(r.bundles)||0);
   html+=`<div class="sumgrid"><div class="sumcard" style="--cc:var(--danger)"><div class="th">最古</div><div class="val">${(Math.floor(maxY*10)/10)}<small>年</small></div></div>
     <div class="sumcard" style="--cc:var(--warn)"><div class="th">滞留総束数</div><div class="val">${num(totB)}<small>束</small></div><div class="sub2">表示中の合計</div></div></div>`;
   html+='<div class="sechead">⏳ 滞留在庫ランキング（年数降順）</div>';
   if(!list.length){ html+='<div class="empty" style="padding:36px 0">該当する滞留在庫はありません</div>'; $("list").innerHTML=html; bindChips(); return; }
+  html+='<div class="rgrid">';
   list.forEach(r=>{
     const y=Math.floor((Number(r.years)||0)*10)/10; const cc="var(--stale-"+staleClass(y).split("-")[1]+")";
     html+=`<div class="rrow" style="--cc:${cc}"><div class="rinfo">
@@ -643,6 +676,7 @@ function renderRitai(){
       <div class="r3">${r.ingestDate?`<span>入荷市日 <b>${esc(r.ingestDate)}</b></span>`:'<span>≈初出近似（入荷市日不明）</span>'}</div>
       </div><div class="rbig"><div class="bn">${num(r.bundles)}</div><div class="bl">束</div></div></div>`;
   });
+  html+='</div>';
   $("list").innerHTML=html; bindChips();
 }
 function chip(k,label){ return `<button class="pchip${ritaiFilter===k?" on":""}" data-r="${k}">${label}</button>`; }
@@ -650,18 +684,35 @@ function bindChips(){ document.querySelectorAll(".pchip[data-r]").forEach(b=>b.o
 
 /* ===== 画面④ 不足在庫 ===== */
 function renderShortage(){
-  const list=SHORTAGE.filter(s=>(Number(s.lack)||0)>0).sort((a,b)=>(Number(b.lack)||0)-(Number(a.lack)||0));
+  const lackList=SHORTAGE.filter(s=>isDirectMarket(s.market)&&(Number(s.lack)||0)>0).sort((a,b)=>(Number(b.lack)||0)-(Number(a.lack)||0));
+  const pending=SHORTAGE.filter(s=>s.market&&!isDirectMarket(s.market));
   let html='<div class="sechead">⚠ 不足在庫（必要数量に対する不足）</div>';
-  if(!list.length){ html+='<div class="empty" style="padding:40px 0"><div class="big">✅</div>不足している規格はありません<br><span style="font-size:11px">設定タブで必要数量を編集できます</span></div>'; $("list").innerHTML=html; return; }
-  list.forEach(s=>{
-    const m=marketOf(s.market);
-    const uncertain=m&&(m.stockMethod==="要確認"||m.stockMethod==="積み上げ");
-    html+=`<div class="rrow" style="--cc:var(--danger)"><div class="rinfo">
-      <div class="r1"><span class="rmkt">${esc(s.market||"全社共通")}</span>${uncertain?'<span class="badge gray">在庫把握: 要確認</span>':""}</div>
-      <div class="rspec">${esc(s.product||"")} ${esc(s.grade||"")}${s.sizeLabel?" ・"+esc(s.sizeLabel):""}</div>
-      <div class="r3"><span>必要 <b>${num(s.need)}</b>束</span><span>現在庫 <b>${num(s.current)}</b>束</span></div>
-      </div><div class="rbig"><div class="bn" style="color:var(--danger)">${num(s.lack)}</div><div class="bl">不足</div></div></div>`;
-  });
+  html+='<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:12px 14px;line-height:1.7;margin-bottom:10px">不足判定は在庫を直接把握できる市場のみ。丸宇は在庫把握の仕組みができたら自動で判定に入ります。</div>';
+  if(!lackList.length&&!pending.length){ html+='<div class="empty" style="padding:40px 0"><div class="big">✅</div>不足している規格はありません<br><span style="font-size:11px">設定タブで必要数量を編集できます</span></div>'; $("list").innerHTML=html; return; }
+  if(lackList.length){
+    html+='<div class="rgrid">';
+    lackList.forEach(s=>{
+      html+=`<div class="rrow" style="--cc:var(--danger)"><div class="rinfo">
+        <div class="r1"><span class="rmkt">${esc(s.market||"全社共通")}</span></div>
+        <div class="rspec">${esc(s.product||"")} ${esc(s.grade||"")}${s.sizeLabel?" ・"+esc(s.sizeLabel):""}</div>
+        <div class="r3"><span>必要 <b>${num(s.need)}</b>束</span><span>現在庫 <b>${num(s.current)}</b>束</span></div>
+        </div><div class="rbig"><div class="bn" style="color:var(--danger)">${num(s.lack)}</div><div class="bl">不足</div></div></div>`;
+    });
+    html+='</div>';
+  } else {
+    html+='<div class="empty" style="padding:28px 0"><div class="big">✅</div>直接把握市場で不足している規格はありません</div>';
+  }
+  if(pending.length){
+    html+='<div class="sechead">⏸ 在庫把握待ち（判定対象外）</div><div class="rgrid">';
+    pending.forEach(s=>{
+      html+=`<div class="rrow" style="--cc:var(--sub);opacity:.75"><div class="rinfo">
+        <div class="r1"><span class="rmkt">${esc(s.market)}</span><span class="badge gray">在庫把握待ち</span></div>
+        <div class="rspec">${esc(s.product||"")} ${esc(s.grade||"")}${s.sizeLabel?" ・"+esc(s.sizeLabel):""}</div>
+        <div class="r3"><span>必要 <b>${num(s.need)}</b>束</span><span>現在庫 —</span></div>
+        </div><div class="rbig"><div class="bn" style="color:var(--sub);font-size:14px">—</div><div class="bl">把握待ち</div></div></div>`;
+    });
+    html+='</div>';
+  }
   html+='<button class="linkbtn" onclick="TAB=\'settings\';document.querySelectorAll(\'.tab\').forEach(x=>x.classList.toggle(\'on\',x.dataset.tab===\'settings\'));render()">⚙ 設定で必要数量を編集</button>';
   $("list").innerHTML=html;
 }
@@ -675,7 +726,10 @@ function verifyHtml(){
     return html;
   }
   const logs=INGESTLOG.slice().sort((a,b)=>String(b.ts||"").localeCompare(String(a.ts||"")));
+  html+='<div class="vgrid">';
   logs.forEach(l=>{
+    const mkt=marketOf(l.market);
+    const df=(mkt&&mkt.driveFolder)||"";
     const batchId=lgv(l,"batchId","batch_id")||"";
     const snap=lgv(l,"snapshotDate","snapshot_date")||"";
     const docB=lgv(l,"docBundles","doc_bundles"), docV=lgv(l,"docVolume","doc_volume");
@@ -718,9 +772,11 @@ function verifyHtml(){
               ? `<button class="vbtn" onclick="confirmBatch('${esc(batchId)}')">✔ この取込を確認済みにする（${rows.length}行）</button>`
               : '<span style="font-size:11px;font-weight:700;color:var(--sub);flex:1;text-align:center">対象在庫行なし（新しい取込で置換済みの可能性）</span>')}
         ${srcPdf?(/^https?:/.test(srcPdf)?`<a class="vpdf" href="${esc(srcPdf)}" target="_blank">📄 元PDF</a>`:`<span class="vpdf" style="border-style:dashed">📄 ${esc(srcPdf)}</span>`):""}
+        ${df?`<a class="vpdf" href="${esc(df)}" target="_blank">📁 フォルダ</a>`:""}
       </div>
     </div>`;
   });
+  html+='</div>';
   return html;
 }
 async function confirmBatch(batchId){
@@ -742,21 +798,24 @@ function renderSettings(){
   // 必要数量
   html+='<div class="sechead">🎯 必要数量（不足在庫の基準）</div>';
   if(SHORTAGE.length){
+    html+='<div class="rgrid">';
     SHORTAGE.forEach(s=>{
       html+=`<div class="setrow"><div class="si"><div class="s1">${esc(s.product||"")} ${esc(s.grade||"")}</div>
         <div class="s2"><span>${esc(s.market||"全社共通")}</span>${s.sizeLabel?`<span>${esc(s.sizeLabel)}</span>`:""}<span>必要 <b>${num(s.need)}</b>束</span></div></div>
         <button class="sedit" onclick="openShortage('${esc(s.id)}')">編集</button></div>`;
     });
+    html+='</div>';
   } else html+='<div class="trend" style="text-align:center;color:var(--sub);font-size:12px;padding:18px 0">必要数量が未登録です</div>';
   html+='<button class="linkbtn" style="border-color:var(--accent);color:#fff;background:var(--accent)" onclick="openShortageNew()">＋ 必要数量を追加</button>';
 
   // 市場マスタ
-  html+='<div class="sechead">🏬 市場マスタ</div>';
+  html+='<div class="sechead">🏬 市場マスタ</div><div class="rgrid">';
   MARKETS.forEach(m=>{
     html+=`<div class="setrow"><div class="si"><div class="s1">${esc(m.market)}${m.active===false?' <span class="badge gray">停止中</span>':""}</div>
-      <div class="s2">${shoryuBadge(m.shoryu)}<span>在庫 ${esc(m.stockMethod||"—")}</span>${m.feeRateManual?`<span>手数料手動 <b>${esc(m.feeRateManual)}%</b></span>`:""}${m.naitoName?`<span>内藤 ${esc(m.naitoName)}</span>`:""}</div></div>
+      <div class="s2">${shoryuBadge(m.shoryu)}<span>在庫 ${esc(m.stockMethod||"—")}</span>${m.feeRateManual?`<span>手数料手動 <b>${esc(m.feeRateManual)}%</b></span>`:""}${m.naitoName?`<span>内藤 ${esc(m.naitoName)}</span>`:""}${m.driveFolder?'<span>📁</span>':""}</div></div>
       <button class="sedit" onclick="openMarket('${esc(m.market)}')">編集</button></div>`;
   });
+  html+='</div>';
   html+='<button class="linkbtn" style="border-color:var(--accent);color:#fff;background:var(--accent)" onclick="openMarketNew()">＋ 市場を追加</button>';
 
   // スプシリンク
@@ -817,7 +876,7 @@ $("shDel").onclick=async()=>{
 function openMarketNew(){
   editMkKey=null; $("mkTitle").textContent="市場を追加";
   $("mkMarket").value=""; $("mkMarket").disabled=false; $("mkShoryu").value="委託"; $("mkStockMethod").value="要確認";
-  $("mkFeeManual").value=""; $("mkNaito").value=""; $("mkLedgerKey").value=""; $("mkDocType").value="";
+  $("mkFeeManual").value=""; $("mkNaito").value=""; $("mkLedgerKey").value=""; $("mkDocType").value=""; $("mkDrive").value="";
   $("mkActive").checked=true; $("mkNote").value="";
   $("mkErr").textContent=""; $("mkWrap").classList.add("show");
 }
@@ -825,7 +884,7 @@ function openMarket(name){
   const m=marketOf(name); if(!m) return;
   editMkKey=name; $("mkTitle").textContent="市場マスタを編集";
   $("mkMarket").value=m.market; $("mkMarket").disabled=true; $("mkShoryu").value=m.shoryu||"委託"; $("mkStockMethod").value=m.stockMethod||"要確認";
-  $("mkFeeManual").value=m.feeRateManual||""; $("mkNaito").value=m.naitoName||""; $("mkLedgerKey").value=m.ledgerKey||""; $("mkDocType").value=m.docType||"";
+  $("mkFeeManual").value=m.feeRateManual||""; $("mkNaito").value=m.naitoName||""; $("mkLedgerKey").value=m.ledgerKey||""; $("mkDocType").value=m.docType||""; $("mkDrive").value=m.driveFolder||"";
   $("mkActive").checked=m.active!==false; $("mkNote").value=m.note||"";
   $("mkErr").textContent=""; $("mkWrap").classList.add("show");
 }
@@ -835,6 +894,7 @@ $("mkSave").onclick=async()=>{
   const mk={ market, shoryu:$("mkShoryu").value, stock_method:$("mkStockMethod").value,
     fee_rate_manual:$("mkFeeManual").value.trim(), naito_name:$("mkNaito").value.trim(),
     ledger_key:$("mkLedgerKey").value.trim(), doc_type:$("mkDocType").value.trim(),
+    drive_folder:$("mkDrive").value.trim(),
     active:$("mkActive").checked, note:$("mkNote").value.trim() };
   const btn=$("mkSave"); btn.disabled=true; btn.textContent="保存中…"; $("mkErr").textContent="";
   try{ const j=await postAction({action:"saveMarket",market:mk}); if(!j.ok) throw new Error(j.error||"保存できませんでした");
@@ -888,15 +948,15 @@ function loadMock(){
   const mock={
     ok:true, today:"2026-07-18", fyStart:"2026-04-01",
     markets:[
-      {market:"（株）勝山木材市場",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"直接",docType:"不落明細書",naitoName:"勝山木材",latestSnapDate:"2026-07-15",latestSnapBundles:506,active:true,note:"品名空欄=桧フローリング"},
+      {market:"（株）勝山木材市場",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"直接",docType:"不落明細書",naitoName:"勝山木材",driveFolder:"https://drive.google.com/drive/folders/mock_katsuyama",latestSnapDate:"2026-07-15",latestSnapBundles:506,active:true,note:"品名空欄=桧フローリング"},
       {market:"（株）金平",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"直接",docType:"売上精算書並びに元落通知書",naitoName:"",latestSnapDate:"2026-06-26",latestSnapBundles:200,active:true,note:"入荷市日=和暦YYMMDD"},
       {market:"千葉県木材市場協同組合",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"直接",docType:"売上精算書(元落明細)",naitoName:"",latestSnapDate:"2026-06-25",latestSnapBundles:179,active:true,note:""},
-      {market:"ナイス（株）沼津",ledgerKey:"",shoryu:"契約型",feeRateManual:"",stockMethod:"直接",docType:"ご請求書(契約)兼預材明細表",naitoName:"",latestSnapDate:"2026-06-20",latestSnapBundles:21,active:true,note:"預材=数量×BL入の罠"},
+      {market:"ナイス（株）沼津",ledgerKey:"",shoryu:"契約型",feeRateManual:"",stockMethod:"直接",docType:"ご請求書(契約)兼預材明細表",naitoName:"",driveFolder:"https://drive.google.com/drive/folders/mock_nice_numazu",latestSnapDate:"2026-06-20",latestSnapBundles:21,active:true,note:"預材=数量×BL入の罠"},
       {market:"アイザワ",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"要確認",docType:"精算書(金額のみ)",naitoName:"",latestSnapDate:"",latestSnapBundles:0,active:true,note:"在庫不明"}
     ],
     sales:[
       {market:"（株）勝山木材市場",shoryu:"委託",fySales:3820000,fyFees:298000,fyNet:3522000,feeRateActual:7.8,feeRateShown:"7.8%",monthly:[{ym:"2026-04",sales:980000,net:903000},{ym:"2026-05",sales:1120000,net:1032000},{ym:"2026-06",sales:870000,net:802000},{ym:"2026-07",sales:850000,net:785000}]},
-      {market:"ナイス（株）沼津",shoryu:"契約型",fySales:2650000,fyFees:8000,fyNet:2642000,feeRateActual:null,feeRateShown:"契約型",monthly:[{ym:"2026-04",sales:700000,net:698000},{ym:"2026-05",sales:640000,net:638000},{ym:"2026-06",sales:660000,net:658000},{ym:"2026-07",sales:650000,net:648000}]},
+      {market:"ナイス（株）沼津",shoryu:"契約型",fySales:2650000,fyFees:8000,fyNet:2642000,feeRateActual:0.3,feeRateShown:"契約型",monthly:[{ym:"2026-04",sales:700000,net:698000},{ym:"2026-05",sales:640000,net:638000},{ym:"2026-06",sales:660000,net:658000},{ym:"2026-07",sales:650000,net:648000}]},
       {market:"（株）金平",shoryu:"委託",fySales:1240000,fyFees:112000,fyNet:1128000,feeRateActual:9.0,feeRateShown:"9.0%",monthly:[{ym:"2026-04",sales:320000,net:291000},{ym:"2026-05",sales:300000,net:273000},{ym:"2026-06",sales:340000,net:309000},{ym:"2026-07",sales:280000,net:255000}]},
       {market:"千葉県木材市場協同組合",shoryu:"委託",fySales:980000,fyFees:88000,fyNet:892000,feeRateActual:9.0,feeRateShown:"9.0%",monthly:[{ym:"2026-04",sales:260000,net:236000},{ym:"2026-05",sales:230000,net:209000},{ym:"2026-06",sales:250000,net:227000},{ym:"2026-07",sales:240000,net:220000}]},
       {market:"アイザワ",shoryu:"委託",fySales:420000,fyFees:38000,fyNet:382000,feeRateActual:9.0,feeRateShown:"9.0%",monthly:[{ym:"2026-04",sales:110000,net:100000},{ym:"2026-05",sales:100000,net:91000},{ym:"2026-06",sales:110000,net:100000},{ym:"2026-07",sales:100000,net:91000}]}
