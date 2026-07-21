@@ -2,7 +2,7 @@
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzdr8jQQKW1dqqGKd1ZtIgUgrlLgoe53-lyXdrIkCAORI23-BMU_6pWy9WyZZaHKQ5Tjw/exec';
 const EMAIL = 'h02050d@gmail.com';
 const PASS = 'kakusa0538';
-const AU = '?authuser=hayazaimuku%40gmail.com'; // hayazaimuku所有＝既定アカウントで開くと404対策
+const AU = ''; // 2026-07-19 h02050dへ閲覧者共有済みのためauthuser指定を廃止（スマホ=h02050dのみのブラウザでも開けるように）
 const F = id => `https://drive.google.com/drive/folders/${id}${AU}`;
 
 const FOLDER = {
