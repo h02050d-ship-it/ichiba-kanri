@@ -88,7 +88,10 @@ main{padding:4px 14px 0;max-width:1280px;margin:0 auto}
 .badge.stale-mid{background:#fbeed6;color:var(--stale-mid)}
 .badge.stale-bad{background:#f7e0d8;color:var(--stale-bad)}
 .badge.wverify{background:#e6eef8;color:var(--info)}
+.badge.westim{background:#f6ecd9;color:#a4762a}
 .feemuted{font-size:10px;color:var(--sub);font-weight:700;align-self:center;white-space:nowrap}
+.estnote{font-size:10px;color:var(--sub);font-weight:700}
+table.stbl td.neg{color:var(--danger);font-weight:800}
 .badge.unconf{background:#e6eef8;color:var(--info);padding:1px 6px}
 .badge.confd{background:#e7f4ec;color:var(--ok)}
 
@@ -329,6 +332,36 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
   </div>
 </div>
 
+<!-- 棚卸しアンカー 追加・編集 -->
+<div class="mwrap" id="anWrap">
+  <div class="modal">
+    <div class="mhead"><h2 id="anTitle">棚卸しアンカーを追加</h2><button class="mx" data-close="anWrap">✕</button></div>
+    <div class="mbody">
+      <div class="row2">
+        <div class="fld"><label>市場<em>*</em></label><select id="anMarket"></select></div>
+        <div class="fld"><label>棚卸日（アンカー日）<em>*</em></label><input type="date" id="anDate"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label>品名<em>*</em></label><input type="text" id="anProduct" list="prodList" placeholder="桧フローリング"></div>
+        <div class="fld"><label>等級</label><input type="text" id="anGrade" list="gradeList" placeholder="丸節"></div>
+      </div>
+      <div class="row3">
+        <div class="fld"><label>厚mm</label><input type="number" id="anThick" inputmode="numeric" placeholder="15"></div>
+        <div class="fld"><label>巾mm</label><input type="number" id="anWidth" inputmode="numeric" placeholder="120"></div>
+        <div class="fld"><label>長さmm</label><input type="number" id="anLength" inputmode="numeric" placeholder="4000"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label>束入</label><input type="number" id="anIrikazu" inputmode="numeric"></div>
+        <div class="fld"><label>実在庫束数<em>*</em></label><input type="number" id="anBundles" min="0" inputmode="numeric" placeholder="棚卸しで数えた束数"></div>
+      </div>
+      <div class="fld"><label>備考</label><textarea id="anNote" placeholder="例：2026秋棚卸（任意）"></textarea></div>
+      <div class="merr" id="anErr"></div>
+      <button class="msave" id="anSave">保存する</button>
+      <button class="mdel" id="anDel" style="display:none">🗑 このアンカーを削除</button>
+    </div>
+  </div>
+</div>
+
 <!-- ログインゲート -->
 <div id="gate">
   <div class="gcard">
@@ -356,7 +389,7 @@ const CACHE_KEY="hayazai_ichiba_cache";
 const USE_MOCK = (GAS_URL==='__GAS_URL__' || !/^https?:/.test(GAS_URL));
 
 /* ===== 状態 ===== */
-let MARKETS=[], SALES=[], STOCK=[], STOCKBYMARKET=[], RITAI=[], SHORTAGE=[], NAITO={updated:"",rows:[]}, DICT=[], INGESTLOG=[];
+let MARKETS=[], SALES=[], STOCK=[], STOCKBYMARKET=[], RITAI=[], SHORTAGE=[], NAITO={updated:"",rows:[]}, DICT=[], INGESTLOG=[], ESTIMATED=[], ANCHORS=[];
 let SHEET_URL="", TODAY="", FYSTART="";
 let TAB="summary";
 let curMarket="";        // 詳細タブの選択市場
@@ -458,6 +491,7 @@ function setBadge(state){ const b=$("srcBadge"); if(state==="live"){ b.className
 function applyData(j){
   MARKETS=j.markets||[]; SALES=j.sales||[]; STOCK=j.stock||[]; STOCKBYMARKET=j.stockByMarket||[];
   RITAI=j.ritai||[]; SHORTAGE=j.shortage||[]; NAITO=j.naito||{updated:"",rows:[]}; DICT=j.dict||[]; INGESTLOG=j.ingestLog||[];
+  ESTIMATED=j.estimated||[]; ANCHORS=j.anchors||[];
   SHEET_URL=j.sheetUrl||""; TODAY=j.today||todayStr(); FYSTART=j.fyStart||"";
 }
 
@@ -503,7 +537,9 @@ function staleBundlesOf(market){ // 半年以上の束数合計
   let b=0; RITAI.forEach(r=>{ if(r.market===market && (Number(r.years)||0)>=0.5) b+=Number(r.bundles)||0; }); return b;
 }
 function isDirectMarket(name){ const m=marketOf(name); return !!(m&&m.stockMethod==="直接"); }
-function lackSpecsOf(market){ if(!isDirectMarket(market)) return 0; return SHORTAGE.filter(s=>s.market===market && (Number(s.lack)||0)>0).length; }
+function estimatedOf(market){ return ESTIMATED.find(e=>e.market===market)||null; }
+function isJudgable(market){ return isDirectMarket(market)||!!estimatedOf(market); }  /* 不足判定に使える市場 */
+function lackSpecsOf(market){ if(!isJudgable(market)) return 0; return SHORTAGE.filter(s=>s.market===market && (Number(s.lack)||0)>0).length; }
 function checkWarnOf(market){ const sb=stockByOf(market); return sb&&sb.checkWarn; }
 function hasUnverified(market){ return STOCK.some(r=>r.market===market && !r.confirmed); }
 /* GAS側のキー表記ゆれ吸収（camel / snake 両対応） */
@@ -548,6 +584,10 @@ function renderSummary(){
     const stale=staleBundlesOf(m.market);
     const lackN=lackSpecsOf(m.market);
     const chkWarn=checkWarnOf(m.market);
+    const estE=estimatedOf(m.market);
+    const isEst=!!estE||(sb&&sb.estimated===true);
+    const estBundles=estE?Number(estE.totalEst)||0:(sb?Number(sb.bundles)||0:0);
+    const noAnchor=!isEst&&(m.stockMethod==="推定"||m.stockMethod==="積み上げ"||m.stockMethod==="要確認");
     const reqConfirm=(m.stockMethod==="要確認");
     let badges='';
     badges+=shoryuBadge(m.shoryu);
@@ -561,7 +601,13 @@ function renderSummary(){
       <div class="mtop"><span class="mname">${esc(m.market)}</span></div>
       <div class="msales">¥${yen(s?s.fySales:0)}<small>今期売上</small></div>
       <div class="mnet">手取り ¥${yen(s?s.fyNet:0)}</div>
-      <div class="mstock">${reqConfirm?'在庫: <span style="color:var(--sub)">要確認</span>':`在庫 <b>${num(bundles)}</b>束`}${snap?`　<span style="color:var(--sub)">最新 ${esc(fmtDate(snap))}</span>`:""}</div>
+      <div class="mstock">${
+        isEst
+        ? `在庫 <b>${num(estBundles)}</b>束 <span class="badge westim" title="棚卸しアンカー＋搬入−販売による推定値">⚠推定</span>${estE&&estE.anchorDate?`　<span class="estnote">アンカー ${esc(fmtDate(estE.anchorDate))}</span>`:""}`
+        : noAnchor
+          ? `在庫: <span style="color:var(--sub)">要確認</span>　<span class="estnote" title="設定タブの棚卸しアンカーを登録すると推定在庫が出ます">（棚卸しアンカー未設定）</span>`
+          : `${reqConfirm?'在庫: <span style="color:var(--sub)">要確認</span>':`在庫 <b>${num(bundles)}</b>束`}${snap?`　<span style="color:var(--sub)">最新 ${esc(fmtDate(snap))}</span>`:""}`
+      }</div>
       <div class="mbadges">${badges}</div>
     </div>`;
   });
@@ -594,7 +640,7 @@ function renderDetail(){
     else feeHtml=`<span>手数料 <b>${esc(s.feeRateShown)}</b></span>`;
   }
   html+=`<div class="dethead"><div class="dn">${esc(m.market)}</div>
-    <div class="dm">${shoryuBadge(m.shoryu)}<span>在庫把握 <b>${esc(m.stockMethod||"—")}</b></span>${sb&&sb.latestSnapDate?`<span>最新スナップ <b>${esc(sb.latestSnapDate)}</b></span>`:""}${feeHtml}${m.driveFolder?`<a class="vpdf" href="${esc(m.driveFolder)}" target="_blank" style="padding:6px 10px">📁 精算書フォルダ</a>`:""}</div></div>`;
+    <div class="dm">${shoryuBadge(m.shoryu)}<span>在庫把握 <b>${esc(m.stockMethod||"—")}</b></span>${estimatedOf(m.market)?'<span class="badge westim">⚠推定在庫</span>':""}${sb&&sb.latestSnapDate?`<span>最新スナップ <b>${esc(sb.latestSnapDate)}</b></span>`:""}${feeHtml}${m.driveFolder?`<a class="vpdf" href="${esc(m.driveFolder)}" target="_blank" style="padding:6px 10px">📁 精算書フォルダ</a>`:""}</div></div>`;
 
   // 月別売上＋内藤運賃（PCは横並び2カラム）
   html+='<div class="det2col"><div>';
@@ -623,6 +669,28 @@ function renderDetail(){
     html+='<div class="trend" style="text-align:center;color:var(--sub);font-size:12px;padding:18px 0">内藤運賃: 対応なし（設定で取引先名を紐付け）</div>';
   }
   html+='</div></div>';
+
+  // 推定在庫の内訳（棚卸しアンカー方式）
+  const estE=estimatedOf(m.market);
+  if(estE){
+    html+='<div class="sechead">📐 推定在庫の内訳（アンカー＋搬入−販売）</div>';
+    html+=`<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:10px 14px;line-height:1.7;margin-bottom:8px">棚卸しアンカー日 <b style="color:var(--ink)">${esc(estE.anchorDate||"—")}</b> の実在庫からの計算です（年1回の棚卸しでリセット）。搬入・販売の記録漏れがあるとズレます。</div>`;
+    const erows=estE.rows||[];
+    if(erows.length){
+      html+='<div class="tblwrap"><table class="stbl"><thead><tr><th>品名</th><th>等級</th><th>サイズ</th><th class="num">アンカー</th><th class="num">＋搬入</th><th class="num">−販売</th><th class="num">＝推定</th></tr></thead><tbody>';
+      erows.forEach(r=>{
+        const est=Number(r.est)||0;
+        html+=`<tr>
+          <td>${esc(r.product||"—")}</td><td>${esc(r.grade||"")}</td><td>${esc(sizeLabel(r))}</td>
+          <td class="num">${num(r.anchor)}</td><td class="num">+${num(r.inflow)}</td><td class="num">−${num(r.sold)}</td>
+          <td class="num ${est<0?"neg":""}">${est<0?"⚠ ":""}${num(est)}</td>
+        </tr>`;
+      });
+      html+=`</tbody><tfoot><tr><th colspan="6" style="text-align:right">推定在庫合計</th><th class="num" style="text-align:right">${num(estE.totalEst)}束</th></tr></tfoot></table></div>`;
+    } else {
+      html+='<div class="trend" style="text-align:center;color:var(--sub);font-size:12px;padding:16px 0">アンカー明細がありません</div>';
+    }
+  }
 
   // 在庫明細
   html+='<div class="sechead">📦 在庫明細</div>';
@@ -684,29 +752,30 @@ function bindChips(){ document.querySelectorAll(".pchip[data-r]").forEach(b=>b.o
 
 /* ===== 画面④ 不足在庫 ===== */
 function renderShortage(){
-  const lackList=SHORTAGE.filter(s=>isDirectMarket(s.market)&&(Number(s.lack)||0)>0).sort((a,b)=>(Number(b.lack)||0)-(Number(a.lack)||0));
-  const pending=SHORTAGE.filter(s=>s.market&&!isDirectMarket(s.market));
+  const lackList=SHORTAGE.filter(s=>isJudgable(s.market)&&(Number(s.lack)||0)>0).sort((a,b)=>(Number(b.lack)||0)-(Number(a.lack)||0));
+  const pending=SHORTAGE.filter(s=>s.market&&!isJudgable(s.market));
   let html='<div class="sechead">⚠ 不足在庫（必要数量に対する不足）</div>';
-  html+='<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:12px 14px;line-height:1.7;margin-bottom:10px">不足判定は在庫を直接把握できる市場のみ。丸宇は在庫把握の仕組みができたら自動で判定に入ります。</div>';
+  html+='<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:12px 14px;line-height:1.7;margin-bottom:10px">不足判定は「在庫を直接把握できる市場」と「棚卸しアンカー設定済みの推定市場」が対象。推定市場の現在庫は アンカー＋搬入−販売 の推定値です。</div>';
   if(!lackList.length&&!pending.length){ html+='<div class="empty" style="padding:40px 0"><div class="big">✅</div>不足している規格はありません<br><span style="font-size:11px">設定タブで必要数量を編集できます</span></div>'; $("list").innerHTML=html; return; }
   if(lackList.length){
     html+='<div class="rgrid">';
     lackList.forEach(s=>{
+      const isEst=!!estimatedOf(s.market);
       html+=`<div class="rrow" style="--cc:var(--danger)"><div class="rinfo">
-        <div class="r1"><span class="rmkt">${esc(s.market||"全社共通")}</span></div>
+        <div class="r1"><span class="rmkt">${esc(s.market||"全社共通")}</span>${isEst?'<span class="badge westim">推定</span>':""}</div>
         <div class="rspec">${esc(s.product||"")} ${esc(s.grade||"")}${s.sizeLabel?" ・"+esc(s.sizeLabel):""}</div>
-        <div class="r3"><span>必要 <b>${num(s.need)}</b>束</span><span>現在庫 <b>${num(s.current)}</b>束</span></div>
+        <div class="r3"><span>必要 <b>${num(s.need)}</b>束</span><span>現在庫 <b>${num(s.current)}</b>束${isEst?'<span class="estnote">(推定)</span>':""}</span></div>
         </div><div class="rbig"><div class="bn" style="color:var(--danger)">${num(s.lack)}</div><div class="bl">不足</div></div></div>`;
     });
     html+='</div>';
   } else {
-    html+='<div class="empty" style="padding:28px 0"><div class="big">✅</div>直接把握市場で不足している規格はありません</div>';
+    html+='<div class="empty" style="padding:28px 0"><div class="big">✅</div>判定対象市場で不足している規格はありません</div>';
   }
   if(pending.length){
-    html+='<div class="sechead">⏸ 在庫把握待ち（判定対象外）</div><div class="rgrid">';
+    html+='<div class="sechead">⏸ 在庫把握待ち（判定対象外・棚卸しアンカー未設定）</div><div class="rgrid">';
     pending.forEach(s=>{
       html+=`<div class="rrow" style="--cc:var(--sub);opacity:.75"><div class="rinfo">
-        <div class="r1"><span class="rmkt">${esc(s.market)}</span><span class="badge gray">在庫把握待ち</span></div>
+        <div class="r1"><span class="rmkt">${esc(s.market)}</span><span class="badge gray">アンカー未設定</span></div>
         <div class="rspec">${esc(s.product||"")} ${esc(s.grade||"")}${s.sizeLabel?" ・"+esc(s.sizeLabel):""}</div>
         <div class="r3"><span>必要 <b>${num(s.need)}</b>束</span><span>現在庫 —</span></div>
         </div><div class="rbig"><div class="bn" style="color:var(--sub);font-size:14px">—</div><div class="bl">把握待ち</div></div></div>`;
@@ -817,6 +886,21 @@ function renderSettings(){
   });
   html+='</div>';
   html+='<button class="linkbtn" style="border-color:var(--accent);color:#fff;background:var(--accent)" onclick="openMarketNew()">＋ 市場を追加</button>';
+
+  // 棚卸しアンカー
+  html+='<div class="sechead">📐 棚卸しアンカー（推定在庫の基準）</div>';
+  html+='<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:10px 14px;line-height:1.7;margin-bottom:8px">在庫が直接取れない市場（丸宇/HIKARI/中央木材/アイザワ等）は、棚卸しの実在庫を「アンカー」として登録すると アンカー＋搬入−販売 で推定在庫を表示します。年1回の棚卸しごとに更新してください。</div>';
+  if(ANCHORS.length){
+    html+='<div class="rgrid">';
+    ANCHORS.forEach(a=>{
+      const spec=[a.product,a.grade].filter(Boolean).join(" ")+(sizeLabel(a)?" ・"+sizeLabel(a):"");
+      html+=`<div class="setrow"><div class="si"><div class="s1">${esc(a.market||"")}</div>
+        <div class="s2"><span>棚卸日 <b>${esc(a.anchorDate||lgv(a,"anchorDate","anchor_date")||"")}</b></span><span>${esc(spec)}</span><span>実在庫 <b>${num(a.bundles)}</b>束</span></div></div>
+        <button class="sedit" onclick="openAnchor('${esc(a.id)}')">編集</button></div>`;
+    });
+    html+='</div>';
+  } else html+='<div class="trend" style="text-align:center;color:var(--sub);font-size:12px;padding:16px 0">棚卸しアンカーが未登録です</div>';
+  html+='<button class="linkbtn" style="border-color:var(--accent);color:#fff;background:var(--accent)" onclick="openAnchorNew()">＋ 棚卸しアンカーを追加</button>';
 
   // スプシリンク
   html+='<div class="sechead">🔗 データ</div>';
@@ -943,6 +1027,60 @@ $("stDel").onclick=async()=>{
   }catch(e){ $("stErr").textContent="削除エラー: "+e.message; }
 };
 
+/* ===== 棚卸しアンカー モーダル ===== */
+let editAnId=null;
+function fillAnchorMarketSel(sel){
+  const el=$("anMarket");
+  el.innerHTML='<option value="">選択してください</option>'+MARKETS.map(m=>`<option value="${esc(m.market)}"${m.market===sel?" selected":""}>${esc(m.market)}</option>`).join("");
+}
+function openAnchorNew(){
+  editAnId=null; $("anTitle").textContent="棚卸しアンカーを追加";
+  fillAnchorMarketSel("");
+  $("anDate").value=TODAY||todayStr();
+  $("anProduct").value=""; $("anGrade").value="";
+  $("anThick").value=""; $("anWidth").value="120"; $("anLength").value="";
+  $("anIrikazu").value=""; $("anBundles").value=""; $("anNote").value="";
+  $("anErr").textContent=""; $("anDel").style.display="none";
+  $("anWrap").classList.add("show");
+}
+function openAnchor(id){
+  const a=ANCHORS.find(x=>x.id===id); if(!a) return;
+  editAnId=id; $("anTitle").textContent="棚卸しアンカーを編集";
+  fillAnchorMarketSel(a.market||"");
+  $("anDate").value=a.anchorDate||lgv(a,"anchorDate","anchor_date")||"";
+  $("anProduct").value=a.product||""; $("anGrade").value=a.grade||"";
+  $("anThick").value=a.thickness||""; $("anWidth").value=a.width||""; $("anLength").value=a.length||"";
+  $("anIrikazu").value=a.irikazu||""; $("anBundles").value=a.bundles||""; $("anNote").value=a.note||"";
+  $("anErr").textContent=""; $("anDel").style.display="";
+  $("anWrap").classList.add("show");
+}
+$("anSave").onclick=async()=>{
+  const market=$("anMarket").value, date=$("anDate").value, product=$("anProduct").value.trim();
+  const bundles=parseInt($("anBundles").value,10);
+  if(!market){ $("anErr").textContent="市場を選択してください"; return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $("anErr").textContent="棚卸日を入力してください"; return; }
+  if(!product){ $("anErr").textContent="品名を入力してください"; return; }
+  if(!(bundles>=0)){ $("anErr").textContent="実在庫束数を入力してください"; return; }
+  const anchor={ id:editAnId||"", market, anchor_date:date, product, grade:$("anGrade").value.trim(),
+    thickness_mm:$("anThick").value.trim(), width_mm:$("anWidth").value.trim(), length_mm:$("anLength").value.trim(),
+    irikazu:$("anIrikazu").value.trim(), bundles, note:$("anNote").value.trim() };
+  const btn=$("anSave"); btn.disabled=true; btn.textContent="保存中…"; $("anErr").textContent="";
+  try{
+    const j=await postAction({action:"saveAnchor",anchor});
+    if(!j.ok) throw new Error(j.error||"保存できませんでした");
+    $("anWrap").classList.remove("show"); toast(editAnId?"更新しました":"アンカーを登録しました"); await fetchAll();
+  }catch(e){ $("anErr").textContent="保存エラー: "+e.message; }
+  finally{ btn.disabled=false; btn.textContent="保存する"; }
+};
+$("anDel").onclick=async()=>{
+  if(!editAnId) return; if(!confirm("この棚卸しアンカーを削除しますか？（推定在庫の計算基準が消えます）")) return;
+  try{
+    const j=await postAction({action:"deleteAnchor",id:editAnId});
+    if(!j.ok) throw new Error(j.error||"削除できませんでした");
+    $("anWrap").classList.remove("show"); toast("削除しました"); await fetchAll();
+  }catch(e){ $("anErr").textContent="削除エラー: "+e.message; }
+};
+
 /* ===== モックデータ（API未接続時のみ・設計書 §2-2 契約準拠） ===== */
 function loadMock(){
   const mock={
@@ -952,7 +1090,8 @@ function loadMock(){
       {market:"（株）金平",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"直接",docType:"売上精算書並びに元落通知書",naitoName:"",latestSnapDate:"2026-06-26",latestSnapBundles:200,active:true,note:"入荷市日=和暦YYMMDD"},
       {market:"千葉県木材市場協同組合",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"直接",docType:"売上精算書(元落明細)",naitoName:"",latestSnapDate:"2026-06-25",latestSnapBundles:179,active:true,note:""},
       {market:"ナイス（株）沼津",ledgerKey:"",shoryu:"契約型",feeRateManual:"",stockMethod:"直接",docType:"ご請求書(契約)兼預材明細表",naitoName:"",driveFolder:"https://drive.google.com/drive/folders/mock_nice_numazu",latestSnapDate:"2026-06-20",latestSnapBundles:21,active:true,note:"預材=数量×BL入の罠"},
-      {market:"アイザワ",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"要確認",docType:"精算書(金額のみ)",naitoName:"",latestSnapDate:"",latestSnapBundles:0,active:true,note:"在庫不明"}
+      {market:"アイザワ",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"要確認",docType:"精算書(金額のみ)",naitoName:"",latestSnapDate:"",latestSnapBundles:0,active:true,note:"在庫不明"},
+      {market:"丸宇木材市売（株）北浜市場",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"積み上げ",docType:"計算書(元落)",naitoName:"",latestSnapDate:"",latestSnapBundles:0,active:true,note:"棚卸しアンカー方式で推定"}
     ],
     sales:[
       {market:"（株）勝山木材市場",shoryu:"委託",fySales:3820000,fyFees:298000,fyNet:3522000,feeRateActual:7.8,feeRateShown:"7.8%",monthly:[{ym:"2026-04",sales:980000,net:903000},{ym:"2026-05",sales:1120000,net:1032000},{ym:"2026-06",sales:870000,net:802000},{ym:"2026-07",sales:850000,net:785000}]},
@@ -974,7 +1113,18 @@ function loadMock(){
       {market:"（株）金平",bundles:200,volume:10.54,latestSnapDate:"2026-06-26",staleWarn:true,checkWarn:false},
       {market:"千葉県木材市場協同組合",bundles:179,volume:8.85,latestSnapDate:"2026-06-25",staleWarn:false,checkWarn:true},
       {market:"ナイス（株）沼津",bundles:21,volume:0.88,latestSnapDate:"2026-06-20",staleWarn:false,checkWarn:false},
-      {market:"アイザワ",bundles:0,volume:0,latestSnapDate:"",staleWarn:false,checkWarn:false}
+      {market:"アイザワ",bundles:0,volume:0,latestSnapDate:"",staleWarn:false,checkWarn:false},
+      {market:"丸宇木材市売（株）北浜市場",bundles:41,volume:0,latestSnapDate:"",staleWarn:false,checkWarn:false,estimated:true}
+    ],
+    estimated:[
+      {market:"丸宇木材市売（株）北浜市場",anchorDate:"2026-09-30",totalEst:41,rows:[
+        {product:"桧フローリング",grade:"丸節",thickness:15,width:120,length:4000,anchor:40,inflow:12,sold:9,est:43},
+        {product:"桧フローリング",grade:"特上小",thickness:15,width:120,length:4000,anchor:25,inflow:0,sold:27,est:-2}
+      ]}
+    ],
+    anchors:[
+      {id:"A0001",market:"丸宇木材市売（株）北浜市場",anchorDate:"2026-09-30",product:"桧フローリング",grade:"丸節",thickness:15,width:120,length:4000,irikazu:6,bundles:40,note:"2026秋棚卸"},
+      {id:"A0002",market:"丸宇木材市売（株）北浜市場",anchorDate:"2026-09-30",product:"桧フローリング",grade:"特上小",thickness:15,width:120,length:4000,irikazu:6,bundles:25,note:"2026秋棚卸"}
     ],
     ritai:[
       {market:"（株）金平",product:"桧フローリング",grade:"丸節",sizeLabel:"15t×120w×4m",bundles:200,ingestDate:"2012-01-07",years:14.5,approx:false},
@@ -983,7 +1133,7 @@ function loadMock(){
       {market:"（株）勝山木材市場",product:"桧フローリング",grade:"特上小",sizeLabel:"15t×120w×4m",bundles:120,ingestDate:"2024-05-12",years:2.2,approx:false}
     ],
     shortage:[
-      {id:"N0001",market:"丸宇木材市売（株）北浜市場",product:"桧フローリング",grade:"丸節",sizeLabel:"15t×120w×4m",need:50,current:20,lack:30},
+      {id:"N0001",market:"丸宇木材市売（株）北浜市場",product:"桧フローリング",grade:"丸節",sizeLabel:"15t×120w×4m",need:50,current:43,lack:7},
       {id:"N0002",market:"丸宇木材市売（株）下館市場",product:"桧羽目板",grade:"丸節",sizeLabel:"12t×120w×4m",need:40,current:40,lack:0},
       {id:"N0003",market:"千葉県木材市場協同組合",product:"桧フローリング",grade:"無節",sizeLabel:"15t×120w×4m",need:30,current:8,lack:22}
     ],
