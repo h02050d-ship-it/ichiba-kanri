@@ -389,11 +389,12 @@ const CACHE_KEY="hayazai_ichiba_cache";
 const USE_MOCK = (GAS_URL==='__GAS_URL__' || !/^https?:/.test(GAS_URL));
 
 /* ===== 状態 ===== */
-let MARKETS=[], SALES=[], STOCK=[], STOCKBYMARKET=[], RITAI=[], SHORTAGE=[], NAITO={updated:"",rows:[]}, DICT=[], INGESTLOG=[], ESTIMATED=[], ANCHORS=[];
+let MARKETS=[], SALES=[], STOCK=[], STOCKBYMARKET=[], RITAI=[], SHORTAGE=[], NAITO={updated:"",rows:[]}, DICT=[], INGESTLOG=[], ESTIMATED=[], ANCHORS=[], TANAOROSHI=[];
+const TANA_FOLDER_URL="https://drive.google.com/drive/folders/1mhHew_SE07KA3nJxorWXaiiq_PHtD0rb";
 let SHEET_URL="", TODAY="", FYSTART="";
 let TAB="summary";
 let curMarket="";        // 詳細タブの選択市場
-let ritaiFilter="0.5";   // 0.5 | 3 | 6（半年未満は常に対象外）
+let ritaiFilter="0.5";   // 0.5 | 1 | 2（半年未満は常に対象外）
 let editShId=null, editStId=null, editMkKey=null;
 
 /* ===== 資格情報（共通SSO） ===== */
@@ -435,7 +436,8 @@ function sizeLabel(o){
 }
 
 /* ===== 滞留年数バッジ ===== */
-function staleClass(y){ y=Number(y)||0; if(y>=6) return "stale-bad"; if(y>=3) return "stale-mid"; return "stale-ok"; }
+/* 実績ベース基準: 96%が2年以内に売れる → <1年=緑(正常) / 1〜2年=橙(値下げ判断) / 2年+=赤(処分対象・幽霊疑い) */
+function staleClass(y){ y=Number(y)||0; if(y>=2) return "stale-bad"; if(y>=1) return "stale-mid"; return "stale-ok"; }
 function staleBadge(years,approx){
   if(years==null||years==="") return "";
   if(Number(years)<0.5) return "";   /* 半年未満は滞留扱いしない */
@@ -491,7 +493,7 @@ function setBadge(state){ const b=$("srcBadge"); if(state==="live"){ b.className
 function applyData(j){
   MARKETS=j.markets||[]; SALES=j.sales||[]; STOCK=j.stock||[]; STOCKBYMARKET=j.stockByMarket||[];
   RITAI=j.ritai||[]; SHORTAGE=j.shortage||[]; NAITO=j.naito||{updated:"",rows:[]}; DICT=j.dict||[]; INGESTLOG=j.ingestLog||[];
-  ESTIMATED=j.estimated||[]; ANCHORS=j.anchors||[];
+  ESTIMATED=j.estimated||[]; ANCHORS=j.anchors||[]; TANAOROSHI=j.tanaoroshi||[];
   SHEET_URL=j.sheetUrl||""; TODAY=j.today||todayStr(); FYSTART=j.fyStart||"";
 }
 
@@ -533,13 +535,17 @@ function salesOf(market){ return SALES.find(s=>s.market===market)||null; }
 function stockByOf(market){ return STOCKBYMARKET.find(s=>s.market===market)||null; }
 function marketOf(name){ return MARKETS.find(m=>m.market===name)||null; }
 function activeMarkets(){ return MARKETS.filter(m=>m.active!==false); }
-function staleBundlesOf(market){ // 半年以上の束数合計
-  let b=0; RITAI.forEach(r=>{ if(r.market===market && (Number(r.years)||0)>=0.5) b+=Number(r.bundles)||0; }); return b;
+function staleInfoOf(market){ // 1年以上の束数合計＋2年以上有無（一覧⏳バッジ用）
+  let b=0, red=false;
+  RITAI.forEach(r=>{ const y=Number(r.years)||0; if(r.market===market && y>=1){ b+=Number(r.bundles)||0; if(y>=2) red=true; } });
+  return {bundles:b, red};
 }
 function isDirectMarket(name){ const m=marketOf(name); return !!(m&&m.stockMethod==="直接"); }
 function estimatedOf(market){ return ESTIMATED.find(e=>e.market===market)||null; }
 function isJudgable(market){ return isDirectMarket(market)||!!estimatedOf(market); }  /* 不足判定に使える市場 */
 function lackSpecsOf(market){ if(!isJudgable(market)) return 0; return SHORTAGE.filter(s=>s.market===market && (Number(s.lack)||0)>0).length; }
+function tanaOf(market){ return TANAOROSHI.find(t=>t.market===market)||null; }
+function hasTanaDiff(market){ const t=tanaOf(market); if(!t) return false; return (t.ok!==undefined&&t.ok!==null)?!t.ok:(t.rows||[]).some(r=>Number(r.diff)||0); }
 function checkWarnOf(market){ const sb=stockByOf(market); return sb&&sb.checkWarn; }
 function hasUnverified(market){ return STOCK.some(r=>r.market===market && !r.confirmed); }
 /* GAS側のキー表記ゆれ吸収（camel / snake 両対応） */
@@ -564,12 +570,12 @@ function renderSummary(){
   let totSales=0, totNet=0, totBundles=0, totStale=0;
   SALES.forEach(s=>{ totSales+=Number(s.fySales)||0; totNet+=Number(s.fyNet)||0; });
   STOCKBYMARKET.forEach(s=>{ totBundles+=Number(s.bundles)||0; });
-  RITAI.forEach(r=>{ if((Number(r.years)||0)>=3) totStale+=Number(r.bundles)||0; });
+  RITAI.forEach(r=>{ if((Number(r.years)||0)>=2) totStale+=Number(r.bundles)||0; });
 
   let html='<div class="sechead">📊 全社サマリー（今期）</div><div class="sumgrid">';
   html+=`<div class="sumcard" style="--cc:var(--accent)"><div class="th">今期売上</div><div class="val">¥${yen(totSales)}</div><div class="sub2">手取り ¥${yen(totNet)}</div></div>`;
   html+=`<div class="sumcard" style="--cc:var(--info)"><div class="th">在庫総束数</div><div class="val">${num(totBundles)}<small>束</small></div><div class="sub2">${mks.length}市場</div></div>`;
-  html+=`<div class="sumcard" style="--cc:var(--warn)"><div class="th">滞留（3年+）</div><div class="val">${num(totStale)}<small>束</small></div><div class="sub2">要資金化</div></div>`;
+  html+=`<div class="sumcard" style="--cc:var(--warn)"><div class="th">滞留（2年+）</div><div class="val">${num(totStale)}<small>束</small></div><div class="sub2">要資金化</div></div>`;
   html+='</div>';
 
   // カード（売上降順・PCは2〜3カラムグリッド）
@@ -581,7 +587,7 @@ function renderSummary(){
     const fee=s?s.feeRateShown:"—";
     const bundles=sb?Number(sb.bundles)||0:(Number(m.latestSnapBundles)||0);
     const snap=(sb&&sb.latestSnapDate)||m.latestSnapDate||"";
-    const stale=staleBundlesOf(m.market);
+    const si=staleInfoOf(m.market);
     const lackN=lackSpecsOf(m.market);
     const chkWarn=checkWarnOf(m.market);
     const estE=estimatedOf(m.market);
@@ -593,9 +599,10 @@ function renderSummary(){
     badges+=shoryuBadge(m.shoryu);
     if(fee&&fee!=="—"&&fee!=="契約型") badges+=`<span class="badge rate">手数料 ${esc(fee)}</span>`;
     if(m.shoryu==="契約型"&&s&&s.feeRateActual!=null&&isFinite(Number(s.feeRateActual))) badges+=`<span class="feemuted">契約型・実測${fmtRatePct(s.feeRateActual)}%</span>`;
-    if(stale>0) badges+=`<span class="badge wstale">⏳ 滞留${num(stale)}束</span>`;
+    if(si.bundles>0) badges+=`<span class="badge ${si.red?"wlack":"wstale"}">⏳ 滞留${num(si.bundles)}束</span>`;
     if(lackN>0) badges+=`<span class="badge wlack">⚠ 不足${lackN}規格</span>`;
     if(chkWarn) badges+=`<span class="badge wcheck">⚠ 要確認</span>`;
+    if(hasTanaDiff(m.market)) badges+=`<span class="badge wstale">📋 棚卸差異</span>`;
     if(hasUnverified(m.market)) badges+=`<span class="badge wverify">🔍 要検証</span>`;
     html+=`<div class="mcard" style="--cc:${cc}" onclick="openDetail('${esc(m.market)}')">
       <div class="mtop"><span class="mname">${esc(m.market)}</span></div>
@@ -724,10 +731,10 @@ function renderDetail(){
 function renderRitai(){
   const base=RITAI.filter(r=>(Number(r.years)||0)>=0.5);  /* 半年未満は対象外 */
   let list=base.slice().sort((a,b)=>(Number(b.years)||0)-(Number(a.years)||0));
-  if(ritaiFilter==="3") list=list.filter(r=>(Number(r.years)||0)>=3);
-  else if(ritaiFilter==="6") list=list.filter(r=>(Number(r.years)||0)>=6);
+  if(ritaiFilter==="1") list=list.filter(r=>(Number(r.years)||0)>=1);
+  else if(ritaiFilter==="2") list=list.filter(r=>(Number(r.years)||0)>=2);
   let html='<div class="pchips">'
-    + chip("0.5","半年以上") + chip("3","3年以上") + chip("6","6年以上") + '</div>';
+    + chip("0.5","半年以上") + chip("1","1年以上") + chip("2","2年以上") + '</div>';
   // 上部サマリー
   const maxY=base.reduce((m,r)=>Math.max(m,Number(r.years)||0),0);
   let totB=0; list.forEach(r=>totB+=Number(r.bundles)||0);
@@ -848,6 +855,65 @@ function verifyHtml(){
   html+='</div>';
   return html;
 }
+/* ===== 棚卸チェック（市場申告 ⇔ 理論在庫） ===== */
+function tanaoroshiHtml(){
+  let html='<div class="sechead">📋 棚卸チェック（市場申告 ⇔ 理論在庫）</div>';
+  if(!TANAOROSHI.length){
+    html+=`<div class="trend" style="text-align:center;color:var(--sub);font-size:12px;padding:18px 14px;line-height:1.8">棚卸明細が取り込まれるとここに突合結果が出ます（フォルダ: 01_FAX・書類＞棚卸関連）<br><a class="vpdf" href="${TANA_FOLDER_URL}" target="_blank" style="display:inline-block;margin-top:8px">📁 棚卸明細フォルダ</a></div>`;
+    return html;
+  }
+  html+='<div class="vgrid">';
+  TANAOROSHI.forEach((t,i)=>{
+    const rows=t.rows||[];
+    const diffRows=rows.filter(r=>(Number(r.diff)||0)!==0);
+    const okRows=rows.filter(r=>(Number(r.diff)||0)===0);
+    const allOk=(t.ok!==undefined&&t.ok!==null)?!!t.ok:!diffRows.length;
+    const mk=marketOf(t.market);
+    const isSuitei=!!(mk&&mk.stockMethod==="推定");
+    const specTd=r=>esc([r.product,r.grade].filter(Boolean).join(" ")+(sizeLabel(r)?" "+sizeLabel(r):""));
+    const diffTd=d=>{ d=Number(d)||0; if(d===0) return '<td class="num" style="color:var(--sub)">0</td>'; return `<td class="num" style="color:var(--warn);font-weight:800">${d>0?"+":""}${num(d)}</td>`; };
+    let tbl='';
+    if(rows.length){
+      tbl+='<div class="tblwrap" style="margin-top:9px"><table class="stbl" style="min-width:0"><thead><tr><th>規格</th><th class="num">申告</th><th class="num">理論</th><th class="num">差異</th></tr></thead><tbody>';
+      diffRows.forEach(r=>{ tbl+=`<tr class="warn"><td>${specTd(r)}</td><td class="num">${num(r.declared)}</td><td class="num">${num(r.theory)}</td>${diffTd(r.diff)}</tr>`; });
+      okRows.forEach(r=>{ tbl+=`<tr class="tanaok-${i}" style="display:none"><td>${specTd(r)}</td><td class="num">${num(r.declared)}</td><td class="num">${num(r.theory)}</td>${diffTd(0)}</tr>`; });
+      tbl+='</tbody></table></div>';
+      if(okRows.length) tbl+=`<button class="vbtn" style="flex:none;width:100%;margin-top:8px" onclick="toggleTanaOk(${i},this,${okRows.length})">▸ 一致${okRows.length}規格を表示</button>`;
+    }
+    html+=`<div class="vcard" style="--cc:${allOk?"var(--ok)":"var(--warn)"}">
+      <div class="v1"><span class="vmkt">${esc(t.market)}</span>${allOk?'<span class="badge stale-ok">✓ 一致</span>':'<span class="badge wstale">⚠ 差異あり</span>'}</div>
+      <div class="vdate" style="margin-top:4px">棚卸日 ${esc(t.asofDate||"—")}</div>
+      <div class="vcmp">
+        <div class="vcol"><div class="vl">📋 市場申告</div><div class="vv">${num(t.declaredTotal)}<small>束</small></div></div>
+        <div class="vmid">⇔</div>
+        <div class="vcol"><div class="vl">🧮 理論在庫</div><div class="vv">${num(t.theoryTotal)}<small>束</small></div></div>
+      </div>
+      ${t.snapNote?`<div class="vmsg">📝 ${esc(t.snapNote)}</div>`:""}
+      ${tbl}
+      <div class="vfoot">
+        ${isSuitei?`<button class="vbtn" onclick="adoptAnchorUI('${esc(t.market)}','${esc(t.asofDate||"")}')">📐 この棚卸をアンカーに採用（推定をリセット）</button>`:""}
+        <a class="vpdf" href="${TANA_FOLDER_URL}" target="_blank">📁 棚卸明細フォルダ</a>
+      </div>
+    </div>`;
+  });
+  html+='</div>';
+  return html;
+}
+function toggleTanaOk(i,btn,n){
+  let shown=false;
+  document.querySelectorAll(".tanaok-"+i).forEach(tr=>{ shown=tr.style.display==="none"; tr.style.display=shown?"":"none"; });
+  btn.textContent=shown?"▾ 一致行を隠す":"▸ 一致"+n+"規格を表示";
+}
+async function adoptAnchorUI(market,asofDate){
+  if(!confirm("この棚卸（"+(asofDate||"日付不明")+"）をアンカーとして採用しますか？\n前回アンカーを置き換え、推定在庫がこの棚卸の実在庫にリセットされます。")) return;
+  try{
+    const j=await postAction({action:"adoptAnchor",market,asofDate});
+    if(!j.ok) throw new Error(j.error||"採用できませんでした");
+    toast("棚卸をアンカーに採用しました");
+    await fetchAll();
+  }catch(e){ toast("エラー: "+e.message); }
+}
+
 async function confirmBatch(batchId){
   if(!batchId){ toast("バッチIDがありません"); return; }
   if(!confirm("この取込バッチの在庫明細をすべて「確認済み」にしますか？")) return;
@@ -864,6 +930,8 @@ function renderSettings(){
   let html='';
   // 取込検証（AI集計の人間チェック）
   html+=verifyHtml();
+  // 棚卸チェック（市場申告⇔理論在庫）
+  html+=tanaoroshiHtml();
   // 必要数量
   html+='<div class="sechead">🎯 必要数量（不足在庫の基準）</div>';
   if(SHORTAGE.length){
@@ -1091,7 +1159,7 @@ function loadMock(){
       {market:"千葉県木材市場協同組合",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"直接",docType:"売上精算書(元落明細)",naitoName:"",latestSnapDate:"2026-06-25",latestSnapBundles:179,active:true,note:""},
       {market:"ナイス（株）沼津",ledgerKey:"",shoryu:"契約型",feeRateManual:"",stockMethod:"直接",docType:"ご請求書(契約)兼預材明細表",naitoName:"",driveFolder:"https://drive.google.com/drive/folders/mock_nice_numazu",latestSnapDate:"2026-06-20",latestSnapBundles:21,active:true,note:"預材=数量×BL入の罠"},
       {market:"アイザワ",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"要確認",docType:"精算書(金額のみ)",naitoName:"",latestSnapDate:"",latestSnapBundles:0,active:true,note:"在庫不明"},
-      {market:"丸宇木材市売（株）北浜市場",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"積み上げ",docType:"計算書(元落)",naitoName:"",latestSnapDate:"",latestSnapBundles:0,active:true,note:"棚卸しアンカー方式で推定"}
+      {market:"丸宇木材市売（株）北浜市場",ledgerKey:"",shoryu:"委託",feeRateManual:"",stockMethod:"推定",docType:"計算書(元落)",naitoName:"",latestSnapDate:"",latestSnapBundles:0,active:true,note:"棚卸しアンカー方式で推定"}
     ],
     sales:[
       {market:"（株）勝山木材市場",shoryu:"委託",fySales:3820000,fyFees:298000,fyNet:3522000,feeRateActual:7.8,feeRateShown:"7.8%",monthly:[{ym:"2026-04",sales:980000,net:903000},{ym:"2026-05",sales:1120000,net:1032000},{ym:"2026-06",sales:870000,net:802000},{ym:"2026-07",sales:850000,net:785000}]},
@@ -1126,11 +1194,21 @@ function loadMock(){
       {id:"A0001",market:"丸宇木材市売（株）北浜市場",anchorDate:"2026-09-30",product:"桧フローリング",grade:"丸節",thickness:15,width:120,length:4000,irikazu:6,bundles:40,note:"2026秋棚卸"},
       {id:"A0002",market:"丸宇木材市売（株）北浜市場",anchorDate:"2026-09-30",product:"桧フローリング",grade:"特上小",thickness:15,width:120,length:4000,irikazu:6,bundles:25,note:"2026秋棚卸"}
     ],
+    tanaoroshi:[
+      {market:"丸宇木材市売（株）北浜市場",asofDate:"2026-09-30",snapNote:"棚卸日以降の搬入1件（10/2着・2束）は理論在庫に含めていません",declaredTotal:88,theoryTotal:90,ok:false,rows:[
+        {product:"桧フローリング",grade:"丸節",thickness:15,width:120,length:4000,declared:40,theory:43,diff:-3},
+        {product:"桧羽目板",grade:"丸節",thickness:12,width:120,length:4000,declared:8,theory:7,diff:1},
+        {product:"桧フローリング",grade:"特上小",thickness:15,width:120,length:4000,declared:25,theory:25,diff:0},
+        {product:"桧フローリング",grade:"無節",thickness:15,width:120,length:4000,declared:10,theory:10,diff:0},
+        {product:"桧スノコ板",grade:"丸節",thickness:12,width:120,length:2000,declared:5,theory:5,diff:0}
+      ]}
+    ],
     ritai:[
       {market:"（株）金平",product:"桧フローリング",grade:"丸節",sizeLabel:"15t×120w×4m",bundles:200,ingestDate:"2012-01-07",years:14.5,approx:false},
       {market:"（株）勝山木材市場",product:"桧フローリング",grade:"無節",sizeLabel:"15t×120w×4m",bundles:72,ingestDate:"2023-03-08",years:3.4,approx:false},
       {market:"千葉県木材市場協同組合",product:"桧フローリング",grade:"丸節",sizeLabel:"15t×120w×4m",bundles:71,ingestDate:"",years:1.6,approx:true},
-      {market:"（株）勝山木材市場",product:"桧フローリング",grade:"特上小",sizeLabel:"15t×120w×4m",bundles:120,ingestDate:"2024-05-12",years:2.2,approx:false}
+      {market:"（株）勝山木材市場",product:"桧フローリング",grade:"特上小",sizeLabel:"15t×120w×4m",bundles:120,ingestDate:"2024-05-12",years:2.2,approx:false},
+      {market:"（株）勝山木材市場",product:"桧フローリング",grade:"丸節",sizeLabel:"15t×120w×4m",bundles:282,ingestDate:"2025-09-10",years:0.8,approx:false}
     ],
     shortage:[
       {id:"N0001",market:"丸宇木材市売（株）北浜市場",product:"桧フローリング",grade:"丸節",sizeLabel:"15t×120w×4m",need:50,current:43,lack:7},
