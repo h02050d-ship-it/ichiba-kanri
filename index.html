@@ -152,6 +152,24 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
 .rrow .rbig{flex:0 0 auto;text-align:right}
 .rrow .rbig .bn{font-size:20px;font-weight:900;line-height:1.1}
 .rrow .rbig .bl{font-size:10px;color:var(--sub);font-weight:700}
+/* 滞留 市場グループ見出し＋FAXボタン */
+.rgrouphd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:16px 0 8px}
+.rgrouphd .gname{font-size:13px;font-weight:800}
+.rgrouphd .gsub{font-size:11px;color:var(--sub);font-weight:700;margin-left:5px}
+.faxbtn{flex:0 0 auto;border:1.5px solid var(--accent);background:var(--card);color:var(--accent2);font-size:12px;font-weight:800;padding:7px 13px;border-radius:10px;cursor:pointer}
+.faxbtn:active{transform:scale(.97)}
+/* FAXモーダル */
+.faxlots{max-height:210px;overflow-y:auto;border:1px solid var(--line);border-radius:11px;padding:6px}
+.faxlot{display:flex;align-items:flex-start;gap:9px;padding:7px 6px;border-bottom:1px solid var(--line)}
+.faxlot:last-child{border-bottom:0}
+.faxlot input{margin-top:3px;flex:0 0 auto;width:17px;height:17px}
+.faxlot .fl-main{flex:1;min-width:0}
+.faxlot .fl-spec{font-size:12.5px;font-weight:800}
+.faxlot .fl-sub{font-size:11px;color:var(--sub);font-weight:700;margin-top:2px}
+.faxlot .fl-b{flex:0 0 auto;font-size:13px;font-weight:900;text-align:right}
+.faxbtnrow{margin:2px 0 10px}
+.mghost{width:100%;border:1.5px solid var(--line);background:var(--card);border-radius:12px;color:var(--ink);font-size:13px;font-weight:800;padding:11px 0;cursor:pointer}
+.faxframe{width:100%;height:340px;border:1px solid var(--line);border-radius:11px;margin-bottom:10px;background:#fff;display:none}
 
 /* ===== フィルタチップ ===== */
 .pchips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 2px 8px}
@@ -359,6 +377,29 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
       <div class="merr" id="anErr"></div>
       <button class="msave" id="anSave">保存する</button>
       <button class="mdel" id="anDel" style="display:none">🗑 このアンカーを削除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 現物確認FAX -->
+<div class="mwrap" id="faxWrap">
+  <div class="modal">
+    <div class="mhead"><h2 id="faxTitle">📠 現物確認FAX</h2><button class="mx" data-close="faxWrap">✕</button></div>
+    <div class="mbody">
+      <div class="fld"><label>宛先市場</label><div id="faxMarket" style="font-size:14px;font-weight:800"></div></div>
+      <div class="fld"><label>宛先FAX番号<em>*</em></label>
+        <input type="text" id="faxNum" inputmode="tel" placeholder="番号を入力してください（0始まり可）">
+        <div id="faxNumHint" style="font-size:11px;color:var(--sub);font-weight:700;margin-top:4px"></div>
+      </div>
+      <div class="fld"><label>対象ロット<span style="font-weight:700;color:var(--sub);font-size:11px">（既定：1年以上をON）</span></label>
+        <div id="faxLots" class="faxlots"><div class="spin"></div></div>
+      </div>
+      <div class="fld"><label>備考（任意・FAXに記載）</label><textarea id="faxNote" placeholder="補足（任意）"></textarea></div>
+      <div class="faxbtnrow"><button class="mghost" id="faxPreviewBtn" type="button">🔍 プレビュー更新</button></div>
+      <iframe id="faxFrame" class="faxframe" title="FAXプレビュー"></iframe>
+      <div class="merr" id="faxErr"></div>
+      <button class="msave" id="faxSendBtn">📠 FAXを送信する</button>
+      <div style="font-size:10.5px;color:var(--sub);text-align:center;margin-top:8px;line-height:1.6">送信前に宛先番号・市場・ロット数を確認します。<br>送信履歴は「FAXデスク」で確認できます。</div>
     </div>
   </div>
 </div>
@@ -731,7 +772,7 @@ function renderDetail(){
   $("list").innerHTML=html;
 }
 
-/* ===== 画面③ 滞留在庫ランキング ===== */
+/* ===== 画面③ 滞留在庫（市場別） ===== */
 function renderRitai(){
   const base=RITAI.filter(r=>(Number(r.years)||0)>=0.5);  /* 半年未満は対象外 */
   let list=base.slice().sort((a,b)=>(Number(b.years)||0)-(Number(a.years)||0));
@@ -744,22 +785,36 @@ function renderRitai(){
   let totB=0; list.forEach(r=>totB+=Number(r.bundles)||0);
   html+=`<div class="sumgrid"><div class="sumcard" style="--cc:var(--danger)"><div class="th">最古</div><div class="val">${(Math.floor(maxY*10)/10)}<small>年</small></div></div>
     <div class="sumcard" style="--cc:var(--warn)"><div class="th">滞留総束数</div><div class="val">${num(totB)}<small>束</small></div><div class="sub2">表示中の合計</div></div></div>`;
-  html+='<div class="sechead">⏳ 滞留在庫ランキング（年数降順）</div>';
+  // 凡例
+  html+='<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:11px 14px;line-height:1.7;margin-bottom:10px">🟡 1年＝値下げ検討　🔴 2年＝処分検討（滞留到達分は毎朝LINE通知）／市場ごとに現物確認FAXを送れます</div>';
+  html+='<div class="sechead">⏳ 滞留在庫（市場別・年数降順）</div>';
   if(!list.length){ html+='<div class="empty" style="padding:36px 0">該当する滞留在庫はありません</div>'; $("list").innerHTML=html; bindChips(); return; }
-  html+='<div class="rgrid">';
-  list.forEach(r=>{
-    const y=Math.floor((Number(r.years)||0)*10)/10; const cc="var(--stale-"+staleClass(y).split("-")[1]+")";
-    html+=`<div class="rrow" style="--cc:${cc}"><div class="rinfo">
-      <div class="r1"><span class="rmkt">${esc(r.market)}</span>${staleBadge(r.years,r.approx)}</div>
-      <div class="rspec">${esc(r.product||"")} ${esc(r.grade||"")}${r.sizeLabel?" ・"+esc(r.sizeLabel):""}</div>
-      <div class="r3">${r.ingestDate?`<span>入荷市日 <b>${esc(r.ingestDate)}</b></span>`:'<span>≈初出近似（入荷市日不明）</span>'}</div>
-      </div><div class="rbig"><div class="bn">${num(r.bundles)}</div><div class="bl">束</div></div></div>`;
+  // 市場でグループ化（年数降順の並びを維持＝各市場は最古ロットの順で出現）
+  const groups=[]; const gi={};
+  list.forEach(r=>{ const m=r.market||""; if(gi[m]===undefined){ gi[m]=groups.length; groups.push({market:m,rows:[]}); } groups[gi[m]].rows.push(r); });
+  groups.forEach(g=>{
+    let gb=0; g.rows.forEach(r=>gb+=Number(r.bundles)||0);
+    const direct=isDirectMarket(g.market);
+    html+=`<div class="rgrouphd"><div class="gname">${esc(g.market)}<span class="gsub">${g.rows.length}件・${num(gb)}束</span></div>`
+      + (direct?`<button class="faxbtn" data-fax-market="${esc(g.market)}">📠 現物確認FAX</button>`:'')
+      + '</div>';
+    html+='<div class="rgrid">';
+    g.rows.forEach(r=>{
+      const y=Math.floor((Number(r.years)||0)*10)/10; const cc="var(--stale-"+staleClass(y).split("-")[1]+")";
+      const bg = y>=2?"#fbe9e1" : y>=1?"#fdf3e0" : "var(--card)";
+      html+=`<div class="rrow" style="--cc:${cc};background:${bg}"><div class="rinfo">
+        <div class="r1"><span class="rmkt">${esc(r.market)}</span>${staleBadge(r.years,r.approx)}</div>
+        <div class="rspec">${esc(r.product||"")} ${esc(r.grade||"")}${r.sizeLabel?" ・"+esc(r.sizeLabel):""}</div>
+        <div class="r3">${r.ingestDate?`<span>入荷市日 <b>${esc(r.ingestDate)}</b></span>`:'<span>≈初出近似（入荷市日不明）</span>'}</div>
+        </div><div class="rbig"><div class="bn">${num(r.bundles)}</div><div class="bl">束</div></div></div>`;
+    });
+    html+='</div>';
   });
-  html+='</div>';
-  $("list").innerHTML=html; bindChips();
+  $("list").innerHTML=html; bindChips(); bindFaxButtons();
 }
 function chip(k,label){ return `<button class="pchip${ritaiFilter===k?" on":""}" data-r="${k}">${label}</button>`; }
 function bindChips(){ document.querySelectorAll(".pchip[data-r]").forEach(b=>b.onclick=()=>{ ritaiFilter=b.dataset.r; render(); }); }
+function bindFaxButtons(){ document.querySelectorAll(".faxbtn[data-fax-market]").forEach(b=>b.onclick=()=>openStaleFax(b.dataset.faxMarket)); }
 
 /* ===== 画面④ 不足在庫 ===== */
 function renderShortage(){
@@ -1269,6 +1324,93 @@ $("anDel").onclick=async()=>{
     if(!j.ok) throw new Error(j.error||"削除できませんでした");
     $("anWrap").classList.remove("show"); toast("削除しました"); await fetchAll();
   }catch(e){ $("anErr").textContent="削除エラー: "+e.message; }
+};
+
+/* ===== 現物確認FAX ===== */
+let FAXSTATE={market:"",lots:[],frameUrl:""};
+function b64ToBlobUrl(b64,mime){
+  try{
+    const bin=atob(b64); const len=bin.length; const bytes=new Uint8Array(len);
+    for(let i=0;i<len;i++) bytes[i]=bin.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes],{type:mime||"application/pdf"}));
+  }catch(e){ return ""; }
+}
+function faxLotLabel(l){
+  const spec=`${esc(l.product||"")} ${esc(l.grade||"")}`.trim();
+  const sz=l.sizeLabel?esc(l.sizeLabel):"";
+  const lvdot=l.level==="red"?"🔴":l.level==="yellow"?"🟡":"";
+  return `<div class="fl-main"><div class="fl-spec">${lvdot} ${spec}</div><div class="fl-sub">${sz}${l.ingestDate?" ・入荷"+esc(l.ingestDate):""} ・${(Math.floor((Number(l.years)||0)*10)/10)}年</div></div><div class="fl-b">${num(l.bundles)}<span style="font-size:10px;color:var(--sub)">束</span></div>`;
+}
+function renderFaxLots(){
+  const box=$("faxLots");
+  if(!FAXSTATE.lots.length){ box.innerHTML='<div class="empty" style="padding:18px 0">対象ロットがありません</div>'; return; }
+  box.innerHTML=FAXSTATE.lots.map(l=>{
+    const on=(Number(l.years)||0)>=1;  // 既定=1年以上をON
+    return `<label class="faxlot"><input type="checkbox" class="faxlotck" value="${esc(String(l.id))}"${on?" checked":""}>${faxLotLabel(l)}</label>`;
+  }).join("");
+}
+function faxSelectedIds(){ return Array.from(document.querySelectorAll(".faxlotck:checked")).map(c=>c.value); }
+function faxSyncSendBtn(){ const n=$("faxNum").value.trim(); const ids=faxSelectedIds(); $("faxSendBtn").disabled=!(n&&ids.length); }
+async function openStaleFax(market){
+  if(USE_MOCK){ toast("サンプル表示中：FAX送信はGAS接続後に有効です"); return; }
+  FAXSTATE={market:market,lots:[],frameUrl:""};
+  $("faxTitle").textContent="📠 現物確認FAX";
+  $("faxMarket").textContent=market;
+  $("faxNum").value=""; $("faxNumHint").textContent="読み込み中…";
+  $("faxNote").value=""; $("faxErr").textContent="";
+  $("faxLots").innerHTML='<div class="spin"></div>';
+  const fr=$("faxFrame"); fr.style.display="none"; fr.removeAttribute("src");
+  $("faxSendBtn").disabled=true;
+  $("faxWrap").classList.add("show");
+  try{
+    const j=await postAction({action:"staleFaxPreview",market:market});
+    if(!j.ok) throw new Error(j.error||"取得できませんでした");
+    FAXSTATE.lots=j.lots||[];
+    $("faxNum").value=j.faxNumber||"";
+    $("faxNumHint").textContent = j.faxNumber
+      ? (j.faxSource==="markets"?"前回の送信先を表示しています（編集可）":"取引先マスタから自動取得しました（編集可）")
+      : "⚠ 番号が見つかりません。宛先FAX番号を入力してください";
+    renderFaxLots();
+    faxShowPdf(j.pdfBase64);
+    faxSyncSendBtn();
+  }catch(e){ $("faxErr").textContent="取得エラー: "+e.message; $("faxLots").innerHTML=""; }
+}
+function faxShowPdf(b64){
+  const fr=$("faxFrame");
+  if(FAXSTATE.frameUrl){ try{ URL.revokeObjectURL(FAXSTATE.frameUrl); }catch(e){} FAXSTATE.frameUrl=""; }
+  if(!b64){ fr.style.display="none"; fr.removeAttribute("src"); return; }
+  const url=b64ToBlobUrl(b64,"application/pdf");
+  if(!url){ fr.style.display="none"; return; }
+  FAXSTATE.frameUrl=url; fr.src=url; fr.style.display="block";
+}
+$("faxNum").addEventListener("input",faxSyncSendBtn);
+$("faxLots").addEventListener("change",faxSyncSendBtn);
+$("faxPreviewBtn").onclick=async()=>{
+  const ids=faxSelectedIds();
+  if(!ids.length){ $("faxErr").textContent="プレビューするロットを1つ以上選んでください"; return; }
+  const btn=$("faxPreviewBtn"); btn.disabled=true; btn.textContent="生成中…"; $("faxErr").textContent="";
+  try{
+    const j=await postAction({action:"staleFaxPreview",market:FAXSTATE.market,lotIds:ids,note:$("faxNote").value.trim()});
+    if(!j.ok) throw new Error(j.error||"生成できませんでした");
+    faxShowPdf(j.pdfBase64);
+  }catch(e){ $("faxErr").textContent="プレビューエラー: "+e.message; }
+  finally{ btn.disabled=false; btn.textContent="🔍 プレビュー更新"; }
+};
+$("faxSendBtn").onclick=async()=>{
+  const num=$("faxNum").value.trim();
+  const ids=faxSelectedIds();
+  if(!num){ $("faxErr").textContent="宛先FAX番号を入力してください"; return; }
+  if(!ids.length){ $("faxErr").textContent="送信するロットを1つ以上選んでください"; return; }
+  if(!confirm(`次の内容でFAXを送信します。よろしいですか？\n\n宛先FAX：${num}\n市場：${FAXSTATE.market}\nロット数：${ids.length}件`)) return;
+  const btn=$("faxSendBtn"); btn.disabled=true; btn.textContent="送信中…"; $("faxErr").textContent="";
+  try{
+    const j=await postAction({action:"staleFaxSend",market:FAXSTATE.market,faxNumber:num,lotIds:ids,note:$("faxNote").value.trim()});
+    if(!j.ok) throw new Error(j.error||"送信できませんでした");
+    $("faxWrap").classList.remove("show");
+    toast("送信しました。履歴はFAXデスクで確認できます");
+    await fetchAll();
+  }catch(e){ $("faxErr").textContent="送信エラー: "+e.message; btn.disabled=false; }
+  finally{ btn.textContent="📠 FAXを送信する"; }
 };
 
 /* ===== モックデータ（API未接続時のみ・設計書 §2-2 契約準拠） ===== */
