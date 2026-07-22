@@ -482,8 +482,9 @@ function sizeLabel(o){
 /* 実績ベース基準: 96%が2年以内に売れる → <1年=緑(正常) / 1〜2年=橙(値下げ判断) / 2年+=赤(処分対象・幽霊疑い) */
 function staleClass(y){ y=Number(y)||0; if(y>=2) return "stale-bad"; if(y>=1) return "stale-mid"; return "stale-ok"; }
 function staleBadge(years,approx){
-  if(years==null||years==="") return "";
-  if(Number(years)<0.5) return "";   /* 半年未満は滞留扱いしない */
+  const dash='<span style="color:var(--sub)">–</span>';  /* 空白だと隣列とずれて見えるためダッシュ表示 */
+  if(years==null||years==="") return dash;
+  if(Number(years)<0.5) return dash;   /* 半年未満は滞留扱いしない */
   const y=Math.floor(Number(years)*10)/10;
   const cls=staleClass(y);
   return `<span class="badge ${cls}">${approx?"≈":""}${y}年</span>`;
