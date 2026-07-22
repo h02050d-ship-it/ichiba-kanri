@@ -239,6 +239,7 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
   <button class="tab" data-tab="detail">🔎 市場詳細</button>
   <button class="tab" data-tab="ritai">⏳ 滞留</button>
   <button class="tab" data-tab="shortage">⚠ 不足</button>
+  <button class="tab" data-tab="price">💴 価格</button>
   <button class="tab" data-tab="settings">⚙ 設定･検証</button>
 </div>
 
@@ -390,6 +391,7 @@ const USE_MOCK = (GAS_URL==='__GAS_URL__' || !/^https?:/.test(GAS_URL));
 
 /* ===== 状態 ===== */
 let MARKETS=[], SALES=[], STOCK=[], STOCKBYMARKET=[], RITAI=[], SHORTAGE=[], NAITO={updated:"",rows:[]}, DICT=[], INGESTLOG=[], ESTIMATED=[], ANCHORS=[], TANAOROSHI=[];
+let PRICECHECK={since:"",fetchedAt:"",sales:{byMarket:[],badLines:[]},nouhin:{byCustomer:[],badLines:[]},note:""};
 const TANA_FOLDER_URL="https://drive.google.com/drive/folders/1mhHew_SE07KA3nJxorWXaiiq_PHtD0rb";
 let SHEET_URL="", TODAY="", FYSTART="";
 let TAB="summary";
@@ -494,6 +496,7 @@ function applyData(j){
   MARKETS=j.markets||[]; SALES=j.sales||[]; STOCK=j.stock||[]; STOCKBYMARKET=j.stockByMarket||[];
   RITAI=j.ritai||[]; SHORTAGE=j.shortage||[]; NAITO=j.naito||{updated:"",rows:[]}; DICT=j.dict||[]; INGESTLOG=j.ingestLog||[];
   ESTIMATED=j.estimated||[]; ANCHORS=j.anchors||[]; TANAOROSHI=j.tanaoroshi||[];
+  PRICECHECK=j.priceCheck||{since:"",fetchedAt:"",sales:{byMarket:[],badLines:[]},nouhin:{byCustomer:[],badLines:[]},note:""};
   SHEET_URL=j.sheetUrl||""; TODAY=j.today||todayStr(); FYSTART=j.fyStart||"";
 }
 
@@ -559,6 +562,7 @@ function render(){
   else if(TAB==="detail") renderDetail();
   else if(TAB==="ritai") renderRitai();
   else if(TAB==="shortage") renderShortage();
+  else if(TAB==="price") renderPrice();
   else if(TAB==="settings") renderSettings();
 }
 
@@ -791,6 +795,124 @@ function renderShortage(){
   }
   html+='<button class="linkbtn" onclick="TAB=\'settings\';document.querySelectorAll(\'.tab\').forEach(x=>x.classList.toggle(\'on\',x.dataset.tab===\'settings\'));render()">⚙ 設定で必要数量を編集</button>';
   $("list").innerHTML=html;
+}
+
+/* ===== 画面 価格適用チェック（2026/7/1改定） ===== */
+function priceSizeM(s){ return s||""; }  /* size は既にGAS側で "4m" 等の文字列 */
+function renderPrice(){
+  const pc=PRICECHECK||{};
+  const sales=pc.sales||{byMarket:[],badLines:[]};
+  const nouhin=pc.nouhin||{byCustomer:[],badLines:[]};
+  const byM=sales.byMarket||[];
+  const salesBad=sales.badLines||[];
+  const nouhinBad=nouhin.badLines||[];
+  const byMMap={}; byM.forEach(x=>byMMap[x.market]=x);
+
+  let html='<div class="sechead">💴 価格適用チェック（2026/7/1改定）</div>';
+  html+='<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:12px 14px;line-height:1.7;margin-bottom:10px">精算書の実売単価と、当社が発行した納品書の設定単価を、新価格表（付売／市売）と自動照合します。'
+    +(pc.since?`　基準日 <b style="color:var(--ink)">${esc(pc.since)}</b> 以降。`:'')
+    +(pc.fetchedAt?`　価格表取得 <b style="color:var(--ink)">${esc(pc.fetchedAt)}</b>`:'')+'</div>';
+
+  // 価格表取得エラー等の注記
+  if(pc.note){
+    html+=`<div class="trend" style="border-left:5px solid var(--danger);font-size:12px;color:var(--danger);font-weight:800;padding:12px 14px;line-height:1.6;margin-bottom:10px">⚠ 価格表を取得できませんでした。判定は保留中です。<br><span style="font-weight:700;color:var(--sub);font-size:11px">${esc(pc.note)}</span></div>`;
+  }
+
+  // 全体サマリー
+  let totLow=0,totLoss=0,totOk=0;
+  byM.forEach(m=>{ totLow+=Number(m.lowCount)||0; totLoss+=Number(m.lowLoss)||0; totOk+=Number(m.okCount)||0; });
+  html+='<div class="sumgrid">';
+  html+=`<div class="sumcard" style="--cc:${totLow>0?'var(--danger)':'var(--ok)'}"><div class="th">新価格未満（市場実売）</div><div class="val">${num(totLow)}<small>件</small></div><div class="sub2">${totLow>0?`取りこぼし ▲¥${yen(totLoss)}`:'該当なし'}</div></div>`;
+  html+=`<div class="sumcard" style="--cc:var(--ok)"><div class="th">新価格で販売中</div><div class="val">${num(totOk)}<small>件</small></div><div class="sub2">市場実売の適正件数</div></div>`;
+  html+='</div>';
+
+  // 市場別サマリーカード（委託・契約型の実売監視）
+  const targets=(MARKETS||[]).filter(m=>m.active!==false && (m.shoryu==="委託"||m.shoryu==="契約型"));
+  const seen={};
+  html+='<div class="sechead">🏪 市場別（精算書の実売単価）</div><div class="mgrid">';
+  targets.forEach(m=>{
+    seen[m.market]=true;
+    html+=priceCard(m.market, m.shoryu, byMMap[m.market]);
+  });
+  // マスタ外だが実売データのある市場も出す
+  byM.forEach(x=>{ if(!seen[x.market]){ html+=priceCard(x.market, x.shoryu||"", x); } });
+  html+='</div>';
+
+  // ⚠ 市場実売 low 明細
+  const lowLines=salesBad.filter(l=>l.status==="low");
+  const naLines=salesBad.filter(l=>l.status==="na");
+  if(lowLines.length){
+    html+='<div class="sechead">⚠ 新価格未満で販売された明細（市場実売）</div>';
+    html+='<div class="tblwrap"><table class="stbl"><thead><tr><th>市日</th><th>市場</th><th>品名 等級 長さ</th><th class="num">束数</th><th class="num">実売単価</th><th class="num">設定単価</th><th class="num">差額</th></tr></thead><tbody>';
+    lowLines.forEach(l=>{
+      html+=`<tr class="warn">
+        <td>${esc(fmtDate(l.date))}</td><td>${esc(l.market)}</td>
+        <td>${esc(l.product||"")} ${esc(l.grade||"")} ${esc(priceSizeM(l.size))}</td>
+        <td class="num">${num(l.qty)}</td>
+        <td class="num">¥${yen(l.unit)}</td>
+        <td class="num">¥${yen(l.expected)}</td>
+        <td class="num neg">▲¥${yen(Math.abs(Number(l.diff)||0))}</td>
+      </tr>`;
+    });
+    html+='</tbody></table></div>';
+  } else if(!pc.note){
+    html+='<div class="trend" style="text-align:center;color:var(--ok);font-size:12.5px;font-weight:800;padding:20px 0;margin-top:4px">✅ 7/1以降、新価格を下回る市場実売はありません</div>';
+  }
+  if(naLines.length){
+    html+=`<div class="estnote" style="margin:8px 2px 0;display:block;font-size:11px">価格表対象外 ${num(naLines.length)}件（スノコ板・特注規格・価格表に未登録の品目など。判定対象外）</div>`;
+  }
+
+  // 当社出荷（納品書の設定単価）
+  html+='<div class="sechead">🧾 納品書の設定単価チェック（当社出荷・市売）</div>';
+  const nLow=nouhinBad.filter(l=>l.status==="low");
+  const nNa=nouhinBad.filter(l=>l.status==="na");
+  if(nLow.length){
+    html+='<div class="tblwrap"><table class="stbl"><thead><tr><th>日付</th><th>取引先</th><th>品名 等級 長さ</th><th class="num">束数</th><th class="num">設定単価</th><th class="num">新価格</th><th class="num">差額</th></tr></thead><tbody>';
+    nLow.forEach(l=>{
+      html+=`<tr class="warn">
+        <td>${esc(fmtDate(l.date))}</td><td>${esc(l.customer)}</td>
+        <td>${esc(l.product||"")} ${esc(l.grade||"")} ${esc(priceSizeM(l.size))}</td>
+        <td class="num">${num(l.qty)}</td>
+        <td class="num">¥${yen(l.unit)}</td>
+        <td class="num">¥${yen(l.expected)}</td>
+        <td class="num neg">▲¥${yen(Math.abs(Number(l.diff)||0))}</td>
+      </tr>`;
+    });
+    html+='</tbody></table></div>';
+  } else if(!pc.note){
+    html+='<div class="trend" style="text-align:center;color:var(--ok);font-size:12.5px;font-weight:800;padding:20px 0">✅ 7/1以降の市売納品書はすべて新価格で発行されています</div>';
+  }
+  if(nNa.length){
+    html+=`<div class="estnote" style="margin:8px 2px 0;display:block;font-size:11px">価格表対象外 ${num(nNa.length)}件（スノコ板・特注規格など。判定対象外）</div>`;
+  }
+
+  $("list").innerHTML=html;
+}
+function priceCard(market, shoryu, bd){
+  const keiyaku=(shoryu||"").indexOf("契約")>=0;
+  const tableBadge=keiyaku?'<span class="badge shoryu-keiyaku">付売基準</span>':'<span class="badge shoryu-itaku">市売基準</span>';
+  let cc, valHtml, subHtml, thHtml;
+  if(!bd || (Number(bd.lines)||0)===0){
+    cc="var(--sub)"; thHtml="⏳ 7月以降の実売データなし"; valHtml='<span style="font-size:16px">未確認</span>'; subHtml="精算書の取込待ち";
+  } else {
+    const low=Number(bd.lowCount)||0, ok=Number(bd.okCount)||0, na=Number(bd.naCount)||0, loss=Number(bd.lowLoss)||0;
+    if(low>0){
+      cc="var(--danger)"; thHtml="⚠️ 新価格未満あり"; valHtml=`${num(low)}<small>件</small>`;
+      subHtml=`取りこぼし ▲¥${yen(loss)}${ok>0?`　適正 ${num(ok)}件`:""}`;
+    } else if(ok>0){
+      cc="var(--ok)"; thHtml="✅ 新価格で販売中"; valHtml=`${num(ok)}<small>件</small>`;
+      subHtml=`新価格未満 0件${na>0?`　対象外 ${num(na)}件`:""}`;
+    } else {
+      cc="var(--sub)"; thHtml="対象外のみ"; valHtml=`${num(na)}<small>件</small>`; subHtml="価格表に該当なし";
+    }
+  }
+  return `<div class="sumcard" style="--cc:${cc}">
+    <div class="th" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${esc(market)}</div>
+    <div class="val">${valHtml}</div>
+    <div class="sub2">${thHtml}</div>
+    <div class="mbadges" style="margin-top:6px">${tableBadge}${bd&&bd.lastDate?`<span class="feemuted">最新 ${esc(fmtDate(bd.lastDate))}</span>`:""}</div>
+    <div class="sub2" style="margin-top:4px">${subHtml}</div>
+  </div>`;
 }
 
 /* ===== 取込検証ビュー（設定タブ上部） ===== */
@@ -1229,6 +1351,28 @@ function loadMock(){
       {id:"L0002",ts:"2026-06-25 08:15",market:"千葉県木材市場協同組合",snapshotDate:"2026-06-25",batchId:"chiba_20260625",rows:3,bundles:176,volume:8.7011,docBundles:179,docVolume:8.8524,readBundles:176,readVolume:8.7011,checksumOk:false,srcPdf:"",status:"warn",message:"頁2の明細1行が読取不確実（束数3束・材積0.15㎥の差）。元PDFと突合してください"},
       {id:"L0001",ts:"2026-06-20 08:12",market:"ナイス（株）沼津",snapshotDate:"2026-06-20",batchId:"nice_numazu_20260620",rows:2,bundles:21,volume:0.8808,docBundles:21,docVolume:0.8808,readBundles:21,readVolume:0.8808,checksumOk:true,srcPdf:"預材明細表_20260620.pdf",status:"ok",message:"検算一致（預材=数量×BL入で束数算出）"}
     ],
+    priceCheck:{
+      since:"2026-07-01", fetchedAt:"2026-07-22",
+      sales:{
+        byMarket:[
+          {market:"（株）HIKARI",shoryu:"委託",table:"市売",lines:10,okCount:6,lowCount:3,naCount:1,lowLoss:16800,lastDate:"2026-07-08"},
+          {market:"（株）勝山木材市場",shoryu:"委託",table:"市売",lines:8,okCount:8,lowCount:0,naCount:0,lowLoss:0,lastDate:"2026-07-15"},
+          {market:"ナイス（株）沼津",shoryu:"契約型",table:"付売",lines:4,okCount:4,lowCount:0,naCount:0,lowLoss:0,lastDate:"2026-07-06"}
+        ],
+        badLines:[
+          {status:"low",market:"（株）HIKARI",date:"2026-07-08",product:"桧フローリング",grade:"丸節",size:"4m",qty:40,unit:9000,expected:9400,diff:-16000},
+          {status:"low",market:"（株）HIKARI",date:"2026-07-08",product:"桧フローリング",grade:"丸節",size:"4m",qty:2,unit:9000,expected:9400,diff:-800},
+          {status:"na",market:"（株）HIKARI",date:"2026-07-08",product:"桧スノコ板",grade:"丸節",size:"2m",qty:5,unit:1800,expected:null,diff:null}
+        ]
+      },
+      nouhin:{
+        byCustomer:[
+          {customer:"（株）HIKARI",table:"市売",lines:6,okCount:6,lowCount:0,naCount:0,lowLoss:0,lastDate:"2026-07-08"}
+        ],
+        badLines:[]
+      },
+      note:""
+    },
     sheetUrl:""
   };
   applyData(mock);
