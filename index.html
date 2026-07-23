@@ -433,6 +433,7 @@ const USE_MOCK = (GAS_URL==='__GAS_URL__' || !/^https?:/.test(GAS_URL));
 /* ===== 状態 ===== */
 let MARKETS=[], SALES=[], STOCK=[], STOCKBYMARKET=[], RITAI=[], SHORTAGE=[], NAITO={updated:"",rows:[]}, DICT=[], INGESTLOG=[], ESTIMATED=[], ANCHORS=[], TANAOROSHI=[];
 let PRICECHECK={since:"",fetchedAt:"",sales:{byMarket:[],badLines:[]},nouhin:{byCustomer:[],badLines:[]},note:""};
+let PRICESEL=null;  /* 価格タブで選択中の市場（クリックで明細ドリルダウン） */
 const TANA_FOLDER_URL="https://drive.google.com/drive/folders/1mhHew_SE07KA3nJxorWXaiiq_PHtD0rb";
 let SHEET_URL="", TODAY="", FYSTART="";
 let TAB="summary";
@@ -855,7 +856,52 @@ function renderShortage(){
 
 /* ===== 画面 価格適用チェック（2026/7/1改定） ===== */
 function priceSizeM(s){ return s||""; }  /* size は既にGAS側で "4m" 等の文字列 */
+function openPriceDetail(m){ PRICESEL=m; render(); window.scrollTo(0,0); }
+function closePriceDetail(){ PRICESEL=null; render(); }
+
+function renderPriceDetail(){
+  const pc=PRICECHECK||{};
+  const m=PRICESEL;
+  const byM=(pc.sales&&pc.sales.byMarket)||[];
+  const bd=byM.find(x=>x.market===m);
+  const mk=(MARKETS||[]).find(x=>x.market===m)||{};
+  const sBad=((pc.sales&&pc.sales.badLines)||[]).filter(l=>l.market===m);
+  const lows=sBad.filter(l=>l.status==="low");
+  const nas=sBad.filter(l=>l.status==="na");
+  const nLow=((pc.nouhin&&pc.nouhin.badLines)||[]).filter(l=>l.status==="low"&&l.customer===m);
+  let html=`<div style="margin-bottom:10px"><button class="pchip" onclick="closePriceDetail()">← 価格チェック一覧へ</button></div>`;
+  html+=`<div class="sechead">💴 ${esc(m)} の価格適用 明細</div>`;
+  html+='<div class="sumgrid">'+priceCard(m, mk.shoryu||(bd&&bd.shoryu)||"", bd)+'</div>';
+  if(pc.note){ html+=`<div class="trend" style="border-left:5px solid var(--danger);font-size:12px;color:var(--danger);font-weight:800;padding:12px 14px;line-height:1.6;margin:10px 0">⚠ 価格表を取得できないため判定保留中です。</div>`; }
+  if(lows.length){
+    html+='<div class="sechead">⚠ 新価格未満で販売された明細</div>';
+    html+='<div class="tblwrap"><table class="stbl"><thead><tr><th>市日</th><th>品名 等級 長さ</th><th class="num">束数</th><th class="num">実売単価</th><th class="num">設定単価</th><th class="num">差額</th></tr></thead><tbody>';
+    let loss=0;
+    lows.forEach(l=>{ loss+=Math.abs(Number(l.diff)||0)*(Number(l.qty)||1);
+      html+=`<tr class="warn"><td>${esc(fmtDate(l.date))}</td><td>${esc(l.product||"")} ${esc(l.grade||"")} ${esc(priceSizeM(l.size))}</td><td class="num">${num(l.qty)}</td><td class="num">¥${yen(l.unit)}</td><td class="num">¥${yen(l.expected)}</td><td class="num neg">▲¥${yen(Math.abs(Number(l.diff)||0))}</td></tr>`;});
+    html+='</tbody></table></div>';
+    html+=`<div class="estnote" style="margin:6px 2px 0;display:block;font-size:11.5px">この市場の取りこぼし合計 <b style="color:var(--danger)">▲¥${yen((bd&&bd.lowLoss)||loss)}</b>（実売単価×束数ベース）。精算書は市場詳細の📁からも確認できます。</div>`;
+  } else {
+    html+=`<div class="trend" style="text-align:center;color:var(--ok);font-size:12.5px;font-weight:800;padding:18px 0">✅ ${esc(pc.since||"基準日")}以降、新価格を下回る実売はありません${bd&&bd.okCount?`（適正 ${num(bd.okCount)}件）`:""}</div>`;
+  }
+  if(nas.length){
+    html+='<div class="sechead">対象外の明細（価格表に未登録・特注等＝判定なし）</div>';
+    html+='<div class="tblwrap"><table class="stbl"><thead><tr><th>市日</th><th>品名 等級 長さ</th><th class="num">束数</th><th class="num">実売単価</th></tr></thead><tbody>';
+    nas.forEach(l=>{ html+=`<tr><td>${esc(fmtDate(l.date))}</td><td>${esc(l.product||"")} ${esc(l.grade||"")} ${esc(priceSizeM(l.size))}</td><td class="num">${num(l.qty)}</td><td class="num">¥${yen(l.unit)}</td></tr>`;});
+    html+='</tbody></table></div>';
+  }
+  if(nLow.length){
+    html+='<div class="sechead">🧾 この市場向け納品書で新価格未満の設定</div>';
+    html+='<div class="tblwrap"><table class="stbl"><thead><tr><th>日付</th><th>品名 等級 長さ</th><th class="num">束数</th><th class="num">設定単価</th><th class="num">新価格</th><th class="num">差額</th></tr></thead><tbody>';
+    nLow.forEach(l=>{ html+=`<tr class="warn"><td>${esc(fmtDate(l.date))}</td><td>${esc(l.product||"")} ${esc(l.grade||"")} ${esc(priceSizeM(l.size))}</td><td class="num">${num(l.qty)}</td><td class="num">¥${yen(l.unit)}</td><td class="num">¥${yen(l.expected)}</td><td class="num neg">▲¥${yen(Math.abs(Number(l.diff)||0))}</td></tr>`;});
+    html+='</tbody></table></div>';
+  }
+  $("list").innerHTML=html;
+  $("fab").style.display="none";
+}
+
 function renderPrice(){
+  if(PRICESEL){ renderPriceDetail(); return; }
   const pc=PRICECHECK||{};
   const sales=pc.sales||{byMarket:[],badLines:[]};
   const nouhin=pc.nouhin||{byCustomer:[],badLines:[]};
@@ -962,7 +1008,7 @@ function priceCard(market, shoryu, bd){
       cc="var(--sub)"; thHtml="対象外のみ"; valHtml=`${num(na)}<small>件</small>`; subHtml="価格表に該当なし";
     }
   }
-  return `<div class="sumcard" style="--cc:${cc}">
+  return `<div class="sumcard" style="--cc:${cc};cursor:pointer" onclick="openPriceDetail('${esc(market)}')" title="クリックで明細を表示">
     <div class="th" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${esc(market)}</div>
     <div class="val">${valHtml}</div>
     <div class="sub2">${thHtml}</div>
