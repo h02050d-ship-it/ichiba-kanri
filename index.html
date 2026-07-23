@@ -258,6 +258,7 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
   <button class="tab" data-tab="ritai">⏳ 滞留</button>
   <button class="tab" data-tab="shortage">⚠ 不足</button>
   <button class="tab" data-tab="price">💴 価格</button>
+  <button class="tab" data-tab="tana">📋 棚卸</button>
   <button class="tab" data-tab="settings">⚙ 設定･検証</button>
 </div>
 
@@ -404,6 +405,14 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
   </div>
 </div>
 
+<!-- 販売履歴（滞留行クリック） -->
+<div class="mwrap" id="histWrap">
+  <div class="modal">
+    <div class="mhead"><h2 id="histTitle">📈 販売履歴</h2><button class="mx" data-close="histWrap">✕</button></div>
+    <div class="mbody" id="histBody"></div>
+  </div>
+</div>
+
 <!-- ログインゲート -->
 <div id="gate">
   <div class="gcard">
@@ -431,7 +440,9 @@ const CACHE_KEY="hayazai_ichiba_cache";
 const USE_MOCK = (GAS_URL==='__GAS_URL__' || !/^https?:/.test(GAS_URL));
 
 /* ===== 状態 ===== */
-let MARKETS=[], SALES=[], STOCK=[], STOCKBYMARKET=[], RITAI=[], SHORTAGE=[], NAITO={updated:"",rows:[]}, DICT=[], INGESTLOG=[], ESTIMATED=[], ANCHORS=[], TANAOROSHI=[];
+let MARKETS=[], SALES=[], STOCK=[], STOCKBYMARKET=[], RITAI=[], SHORTAGE=[], NAITO={updated:"",rows:[]}, DICT=[], INGESTLOG=[], ESTIMATED=[], ANCHORS=[], TANAOROSHI=[], SALESHISTORY=[], TANASUMMARY=[];
+let tanaSel="";          // 棚卸タブで選択中の期（asofDate）
+let RITAI_VIEW=[];       // 滞留タブに現在表示中の行（販売履歴モーダル参照用）
 let PRICECHECK={since:"",fetchedAt:"",sales:{byMarket:[],badLines:[]},nouhin:{byCustomer:[],badLines:[]},note:""};
 let PRICESEL=null;  /* 価格タブで選択中の市場（クリックで明細ドリルダウン） */
 const TANA_FOLDER_URL="https://drive.google.com/drive/folders/1mhHew_SE07KA3nJxorWXaiiq_PHtD0rb";
@@ -539,6 +550,7 @@ function applyData(j){
   MARKETS=j.markets||[]; SALES=j.sales||[]; STOCK=j.stock||[]; STOCKBYMARKET=j.stockByMarket||[];
   RITAI=j.ritai||[]; SHORTAGE=j.shortage||[]; NAITO=j.naito||{updated:"",rows:[]}; DICT=j.dict||[]; INGESTLOG=j.ingestLog||[];
   ESTIMATED=j.estimated||[]; ANCHORS=j.anchors||[]; TANAOROSHI=j.tanaoroshi||[];
+  SALESHISTORY=j.salesHistory||[]; TANASUMMARY=j.tanaoroshiSummary||[];
   PRICECHECK=j.priceCheck||{since:"",fetchedAt:"",sales:{byMarket:[],badLines:[]},nouhin:{byCustomer:[],badLines:[]},note:""};
   SHEET_URL=j.sheetUrl||""; TODAY=j.today||todayStr(); FYSTART=j.fyStart||"";
 }
@@ -606,6 +618,7 @@ function render(){
   else if(TAB==="ritai") renderRitai();
   else if(TAB==="shortage") renderShortage();
   else if(TAB==="price") renderPrice();
+  else if(TAB==="tana") renderTana();
   else if(TAB==="settings") renderSettings();
 }
 
@@ -791,6 +804,7 @@ function renderRitai(){
   html+='<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:11px 14px;line-height:1.7;margin-bottom:10px">🟡 1年＝値下げ検討　🔴 2年＝処分検討（滞留到達分は毎朝LINE通知）／市場ごとに現物確認FAXを送れます</div>';
   html+='<div class="sechead">⏳ 滞留在庫（市場別・年数降順）</div>';
   if(!list.length){ html+='<div class="empty" style="padding:36px 0">該当する滞留在庫はありません</div>'; $("list").innerHTML=html; bindChips(); return; }
+  RITAI_VIEW=list; list.forEach((r,i)=>{ r._vi=i; });  /* 販売履歴モーダル参照用 */
   // 市場でグループ化（年数降順の並びを維持＝各市場は最古ロットの順で出現）
   const groups=[]; const gi={};
   list.forEach(r=>{ const m=r.market||""; if(gi[m]===undefined){ gi[m]=groups.length; groups.push({market:m,rows:[]}); } groups[gi[m]].rows.push(r); });
@@ -804,16 +818,62 @@ function renderRitai(){
     g.rows.forEach(r=>{
       const y=Math.floor((Number(r.years)||0)*10)/10; const cc="var(--stale-"+staleClass(y).split("-")[1]+")";
       const bg = y>=2?"#fbe9e1" : y>=1?"#fdf3e0" : "var(--card)";
-      html+=`<div class="rrow" style="--cc:${cc};background:${bg}"><div class="rinfo">
+      html+=`<div class="rrow" style="--cc:${cc};background:${bg};cursor:pointer" onclick="openSalesHist(${r._vi})" title="クリックで販売履歴を表示"><div class="rinfo">
         <div class="r1"><span class="rmkt">${esc(r.market)}</span>${staleBadge(r.years,r.approx)}</div>
         <div class="rspec">${esc(r.product||"")} ${esc(r.grade||"")}${r.sizeLabel?" ・"+esc(r.sizeLabel):""}</div>
-        <div class="r3">${r.ingestDate?`<span>入荷市日 <b>${esc(r.ingestDate)}</b></span>`:'<span>≈初出近似（入荷市日不明）</span>'}</div>
+        <div class="r3">${r.ingestDate?`<span>入荷市日 <b>${esc(r.ingestDate)}</b></span>`:'<span>≈初出近似（入荷市日不明）</span>'}<span style="color:var(--info)">📈 履歴</span></div>
         </div><div class="rbig"><div class="bn">${num(r.bundles)}</div><div class="bl">束</div></div></div>`;
     });
     html+='</div>';
   });
   $("list").innerHTML=html; bindChips(); bindFaxButtons();
 }
+/* ===== 販売履歴モーダル（滞留行クリック） ===== */
+function findSalesHist(r){
+  const cands=SALESHISTORY.filter(h=>h.market===r.market&&h.product===r.product&&String(h.grade||"")===String(r.grade||""));
+  if(!cands.length) return null;
+  if(r.thickness||r.width||r.length){
+    const ex=cands.find(h=>String(h.thickness||"")===String(r.thickness||"")&&String(h.width||"")===String(r.width||"")&&String(h.length||"")===String(r.length||""));
+    if(ex) return ex;
+  }
+  if(r.sizeLabel){
+    const ex=cands.find(h=>sizeLabel(h)===r.sizeLabel);
+    if(ex) return ex;
+  }
+  return cands[0];
+}
+function daysBetween(a,b){ try{ return Math.round((new Date(a)-new Date(b))/86400000); }catch(e){ return null; } }
+function openSalesHist(vi){
+  const r=RITAI_VIEW[vi]; if(!r) return;
+  const h=findSalesHist(r);
+  const y=Math.floor((Number(r.years)||0)*10)/10;
+  $("histTitle").textContent="📈 販売履歴: "+(r.market||"");
+  let body=`<div class="dethead" style="margin-bottom:12px"><div class="dn" style="font-size:14px">${esc(r.product||"")} ${esc(r.grade||"")}${r.sizeLabel?" ・"+esc(r.sizeLabel):""}</div>
+    <div class="dm">${staleBadge(r.years,r.approx)}<span>在庫 <b>${num(r.bundles)}</b>束</span>${r.ingestDate?`<span>入荷市日 <b>${esc(r.ingestDate)}</b></span>`:""}</div></div>`;
+  if(h){
+    const today=TODAY||todayStr();
+    const ago=h.lastDate?daysBetween(today,h.lastDate):null;
+    const recent=(h.recent||[]);
+    let qty90=0; recent.forEach(x=>{ const d=x.date?daysBetween(today,x.date):null; if(d!=null&&d>=0&&d<=90) qty90+=Number(x.qty)||0; });
+    body+='<div class="sumgrid" style="margin-bottom:12px">';
+    body+=`<div class="sumcard" style="--cc:var(--info)"><div class="th">最後に売れた日</div><div class="val" style="font-size:18px">${esc(h.lastDate||"—")}</div><div class="sub2">${ago!=null?ago+"日前":""}</div></div>`;
+    body+=`<div class="sumcard" style="--cc:var(--accent)"><div class="th">期間内の販売</div><div class="val" style="font-size:18px">${num(h.times)}<small>回・計${num(h.qty)}束</small></div><div class="sub2">平均単価 ¥${yen(h.avgUnit)}</div></div>`;
+    body+='</div>';
+    body+=`<div class="trend" style="font-size:12px;font-weight:800;padding:11px 14px;margin-bottom:12px">在庫 <b>${num(r.bundles)}</b>束 に対して直近90日の販売 <b style="color:${qty90>0?"var(--ok)":"var(--danger)"}">${num(qty90)}</b>束</div>`;
+    if(recent.length){
+      body+='<div class="sechead" style="margin-top:4px">🕐 直近の販売（新しい順）</div>';
+      body+='<div class="tblwrap"><table class="stbl" style="min-width:0"><thead><tr><th>日付</th><th class="num">束数</th><th class="num">単価</th></tr></thead><tbody>';
+      recent.forEach(x=>{ body+=`<tr><td>${esc(x.date||"")}</td><td class="num">${num(x.qty)}</td><td class="num">¥${yen(x.unit)}</td></tr>`; });
+      body+='</tbody></table></div>';
+    }
+  } else {
+    body+=`<div class="empty" style="padding:26px 0"><div class="big">🚫</div>2026/4以降の精算書明細に販売記録がありません<br><b style="color:var(--danger)">（${y}年滞留・要処分検討）</b></div>`;
+  }
+  body+='<div class="estnote" style="display:block;margin-top:12px;line-height:1.7">※履歴は2026年4月以降の精算書明細から。金平・千葉・勝山・ナイスは今後蓄積されます</div>';
+  $("histBody").innerHTML=body;
+  $("histWrap").classList.add("show");
+}
+
 function chip(k,label){ return `<button class="pchip${ritaiFilter===k?" on":""}" data-r="${k}">${label}</button>`; }
 function bindChips(){ document.querySelectorAll(".pchip[data-r]").forEach(b=>b.onclick=()=>{ ritaiFilter=b.dataset.r; render(); }); }
 function bindFaxButtons(){ document.querySelectorAll(".faxbtn[data-fax-market]").forEach(b=>b.onclick=()=>openStaleFax(b.dataset.faxMarket)); }
@@ -852,6 +912,92 @@ function renderShortage(){
   }
   html+='<button class="linkbtn" onclick="TAB=\'settings\';document.querySelectorAll(\'.tab\').forEach(x=>x.classList.toggle(\'on\',x.dataset.tab===\'settings\'));render()">⚙ 設定で必要数量を編集</button>';
   $("list").innerHTML=html;
+}
+
+/* ===== 画面 📋 棚卸（年2回の市場棚卸 進行ボード） ===== */
+function tanaTargets(){
+  /* 実棚卸対象 = active市場のうち、ナイス直送0拠点（SRL帳票/直送メモ）とナイス合算行を除く */
+  return activeMarkets().filter(m=>{
+    const nm=String(m.market||"").trim();
+    if(/^ナイス/.test(nm)){
+      if(nm.replace(/[\s　]/g,"")==="ナイス（株）") return false;               /* 合算行 */
+      const hint=String(m.docType||"")+String(m.note||"");
+      if(/SRL|直送/.test(hint)) return false;                                   /* 直送=在庫0拠点 */
+    }
+    return true;
+  });
+}
+function renderTana(){
+  let html='';
+  const periods=TANASUMMARY.slice().sort((a,b)=>String(b.asofDate||"").localeCompare(String(a.asofDate||"")));
+  if(!periods.length){
+    html+='<div class="sechead">📋 市場棚卸（半期・決算）</div>';
+    html+=`<div class="empty"><div class="big">📋</div>棚卸明細が取り込まれるとここに進行状況が出ます<br><span style="font-size:11px">市場から届いた棚卸明細は下のフォルダへ→毎朝自動で取込・突合されます</span><br><a class="vpdf" href="${TANA_FOLDER_URL}" target="_blank" style="display:inline-block;margin-top:12px">📁 棚卸明細フォルダ</a></div>`;
+    $("list").innerHTML=html; return;
+  }
+  if(!tanaSel||!periods.some(p=>p.asofDate===tanaSel)) tanaSel=periods[0].asofDate;
+  const p=periods.find(x=>x.asofDate===tanaSel);
+  const entries=(p&&p.markets)||[];
+  // 期セレクタ＋フォルダ＋説明
+  html+='<div class="pchips">'+periods.map(x=>`<button class="pchip${x.asofDate===tanaSel?" on":""}" data-tp="${esc(x.asofDate)}">${esc(x.asofDate)}期</button>`).join("")
+    + `<a class="vpdf" href="${TANA_FOLDER_URL}" target="_blank" style="align-self:center">📁 棚卸明細フォルダ</a></div>`;
+  html+='<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:11px 14px;line-height:1.7;margin-bottom:10px">市場から届いた棚卸明細はこのフォルダへ→毎朝自動で取込・突合されます。<b style="color:var(--ink)">この表が決算・半期の市場預け棚卸の元数字になります。</b></div>';
+
+  // 対象市場リスト（マスタにあるが明細未着の市場も行を出す）
+  const targets=tanaTargets();
+  const names=targets.map(m=>m.market);
+  entries.forEach(e=>{ if(!names.includes(e.market)) names.push(e.market); });  /* マスタ外でも明細があれば出す */
+  let totB=0, totV=0, arrived=0;
+  let rowsHtml='';
+  names.forEach(nm=>{
+    const e=entries.find(x=>x.market===nm)||null;
+    const mk=marketOf(nm);
+    const isSuitei=!!(mk&&mk.stockMethod==="推定");
+    if(e){ arrived++; totB+=Number(e.bundles)||0; totV+=Number(e.volume)||0; }
+    // 明細列
+    const srcPdf=e?(lgv(e,"srcPdf","src_pdf")||""):"";
+    const meisai=e
+      ? `✅ <b>${num(e.bundles)}</b>束・${fmtVol(e.volume)}㎥${srcPdf?(/^https?:/.test(srcPdf)?`　<a href="${esc(srcPdf)}" target="_blank" onclick="event.stopPropagation()" style="font-size:10.5px">📄 ${esc(srcPdf.split("/").pop().slice(0,24))}</a>`:`　<span class="estnote">📄 ${esc(srcPdf)}</span>`):""}`
+      : '<span style="color:var(--warn);font-weight:800">⏳ 未着</span>';
+    // 突合列
+    const tougou=e
+      ? (e.ok===true?'<span class="badge stale-ok">✓ 一致</span>':(Number(e.diffCount)>0?`<span class="badge wstale">⚠ 差異${num(e.diffCount)}規格</span>`:'<span style="color:var(--sub)">—</span>'))
+      : '<span style="color:var(--sub)">—</span>';
+    // アンカー列
+    let anchorCell='<span style="color:var(--sub)">—</span>';
+    if(e&&e.adopted) anchorCell='<span class="badge confd">採用済✓</span>';
+    else if(e&&isSuitei) anchorCell=`<button class="sedit" style="padding:5px 10px;font-size:11px" onclick="adoptAnchorUI('${esc(nm)}','${esc(tanaSel)}')">📐 採用</button>`;
+    // 詳細列
+    const hasCard=TANAOROSHI.some(t=>t.market===nm);
+    const detail=hasCard?`<button class="sedit" style="padding:5px 10px;font-size:11px" onclick="goTanaCard('${esc(nm)}','${esc(tanaSel)}')">表示</button>`:'<span style="color:var(--sub)">—</span>';
+    rowsHtml+=`<tr${e?"":' style="background:#fdf6ea"'}>
+      <td>${esc(nm)}${isSuitei?' <span class="badge westim">推定</span>':""}</td>
+      <td>${meisai}</td><td>${tougou}</td><td>${anchorCell}</td><td>${detail}</td>
+    </tr>`;
+  });
+  html+='<div class="sechead">🏬 市場別ステータス（'+esc(tanaSel)+'期）</div>';
+  html+='<div class="tblwrap"><table class="stbl"><thead><tr><th>市場</th><th>明細</th><th>突合</th><th>アンカー</th><th>詳細</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+
+  // 期合計
+  const missing=names.length-arrived;
+  html+='<div class="sumgrid" style="margin-top:12px">';
+  html+=`<div class="sumcard" style="--cc:var(--accent)"><div class="th">期合計（取込済）</div><div class="val">${num(totB)}<small>束</small></div><div class="sub2">${fmtVol(totV)}㎥</div></div>`;
+  html+=`<div class="sumcard" style="--cc:var(--info)"><div class="th">取込済み市場</div><div class="val">${arrived}<small>/${names.length}市場</small></div>${missing>0?`<div class="sub2" style="color:var(--warn);font-weight:800">⏳未着: ${missing}市場</div>`:'<div class="sub2" style="color:var(--ok)">全市場そろいました</div>'}</div>`;
+  html+='</div>';
+  html+='<div class="estnote" style="display:block;text-align:center;margin-top:10px">この表が決算・半期の市場預け棚卸の元数字になります</div>';
+  $("list").innerHTML=html;
+  document.querySelectorAll(".pchip[data-tp]").forEach(b=>b.onclick=()=>{ tanaSel=b.dataset.tp; render(); });
+}
+function goTanaCard(market,asof){
+  const idx=TANAOROSHI.findIndex(t=>t.market===market&&(!asof||!t.asofDate||t.asofDate===asof));
+  const idx2=idx>=0?idx:TANAOROSHI.findIndex(t=>t.market===market);
+  TAB="settings";
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.tab==="settings"));
+  render();
+  if(idx2>=0) setTimeout(()=>{
+    const el=document.getElementById("tanacard-"+idx2);
+    if(el){ el.scrollIntoView({behavior:"smooth",block:"center"}); el.style.boxShadow="0 0 0 3px var(--warn)"; setTimeout(()=>{ el.style.boxShadow=""; },2200); }
+  },80);
 }
 
 /* ===== 画面 価格適用チェック（2026/7/1改定） ===== */
@@ -1104,7 +1250,7 @@ function tanaoroshiHtml(){
       tbl+='</tbody></table></div>';
       if(okRows.length) tbl+=`<button class="vbtn" style="flex:none;width:100%;margin-top:8px" onclick="toggleTanaOk(${i},this,${okRows.length})">▸ 一致${okRows.length}規格を表示</button>`;
     }
-    html+=`<div class="vcard" style="--cc:${allOk?"var(--ok)":"var(--warn)"}">
+    html+=`<div class="vcard" id="tanacard-${i}" style="--cc:${allOk?"var(--ok)":"var(--warn)"};transition:box-shadow .3s">
       <div class="v1"><span class="vmkt">${esc(t.market)}</span>${allOk?'<span class="badge stale-ok">✓ 一致</span>':'<span class="badge wstale">⚠ 差異あり</span>'}</div>
       <div class="vdate" style="margin-top:4px">棚卸日 ${esc(t.asofDate||"—")}</div>
       <div class="vcmp">
@@ -1512,6 +1658,22 @@ function loadMock(){
         {product:"桧フローリング",grade:"特上小",thickness:15,width:120,length:4000,declared:25,theory:25,diff:0},
         {product:"桧フローリング",grade:"無節",thickness:15,width:120,length:4000,declared:10,theory:10,diff:0},
         {product:"桧スノコ板",grade:"丸節",thickness:12,width:120,length:2000,declared:5,theory:5,diff:0}
+      ]}
+    ],
+    salesHistory:[
+      {market:"（株）勝山木材市場",product:"桧フローリング",grade:"特上小",thickness:15,width:120,length:4000,lastDate:"2026-07-10",firstDate:"2026-04-08",times:5,qty:38,avgUnit:9400,recent:[
+        {date:"2026-07-10",qty:6,unit:9400},{date:"2026-06-21",qty:8,unit:9400},{date:"2026-06-02",qty:10,unit:9350},{date:"2026-05-13",qty:6,unit:9300},{date:"2026-04-08",qty:8,unit:9300}]},
+      {market:"（株）勝山木材市場",product:"桧フローリング",grade:"丸節",thickness:15,width:120,length:4000,lastDate:"2026-06-28",firstDate:"2026-04-05",times:7,qty:66,avgUnit:6200,recent:[
+        {date:"2026-06-28",qty:12,unit:6200},{date:"2026-06-10",qty:8,unit:6200},{date:"2026-05-22",qty:10,unit:6150},{date:"2026-05-02",qty:14,unit:6150},{date:"2026-04-05",qty:22,unit:6100}]},
+      {market:"千葉県木材市場協同組合",product:"桧フローリング",grade:"丸節",thickness:15,width:120,length:4000,lastDate:"2026-05-02",firstDate:"2026-04-15",times:2,qty:9,avgUnit:6000,recent:[
+        {date:"2026-05-02",qty:5,unit:6000},{date:"2026-04-15",qty:4,unit:6000}]}
+    ],
+    tanaoroshiSummary:[
+      {asofDate:"2026-03-31",markets:[
+        {market:"（株）勝山木材市場",bundles:498,volume:20.71,srcPdf:"勝山_棚卸_20260331.pdf",ok:true,diffCount:0,adopted:false},
+        {market:"（株）金平",bundles:200,volume:10.54,srcPdf:"金平_棚卸_20260331.pdf",ok:true,diffCount:0,adopted:false},
+        {market:"千葉県木材市場協同組合",bundles:175,volume:8.62,srcPdf:"千葉_棚卸_20260331.pdf",ok:false,diffCount:2,adopted:false},
+        {market:"丸宇木材市売（株）北浜市場",bundles:65,volume:3.10,srcPdf:"丸宇北浜_棚卸_20260331.pdf",ok:false,diffCount:2,adopted:false}
       ]}
     ],
     ritai:[
