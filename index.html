@@ -405,6 +405,14 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
   </div>
 </div>
 
+<!-- 差異の内訳（棚卸チェック規格行クリック） -->
+<div class="mwrap" id="tdWrap">
+  <div class="modal">
+    <div class="mhead"><h2 id="tdTitle">🔍 差異の内訳</h2><button class="mx" data-close="tdWrap">✕</button></div>
+    <div class="mbody" id="tdBody"></div>
+  </div>
+</div>
+
 <!-- 販売履歴（滞留行クリック） -->
 <div class="mwrap" id="histWrap">
   <div class="modal">
@@ -1235,6 +1243,7 @@ function tanaoroshiHtml(){
   html+='<div class="vgrid">';
   TANAOROSHI.forEach((t,i)=>{
     const rows=t.rows||[];
+    rows.forEach((r,ri)=>{ r._ri=ri; });  /* 差異内訳モーダル参照用 */
     const diffRows=rows.filter(r=>(Number(r.diff)||0)!==0);
     const okRows=rows.filter(r=>(Number(r.diff)||0)===0);
     const allOk=(t.ok!==undefined&&t.ok!==null)?!!t.ok:!diffRows.length;
@@ -1244,9 +1253,9 @@ function tanaoroshiHtml(){
     const diffTd=d=>{ d=Number(d)||0; if(d===0) return '<td class="num" style="color:var(--sub)">0</td>'; return `<td class="num" style="color:var(--warn);font-weight:800">${d>0?"+":""}${num(d)}</td>`; };
     let tbl='';
     if(rows.length){
-      tbl+='<div class="tblwrap" style="margin-top:9px"><table class="stbl" style="min-width:0"><thead><tr><th>規格</th><th class="num">申告</th><th class="num">理論</th><th class="num">差異</th></tr></thead><tbody>';
-      diffRows.forEach(r=>{ tbl+=`<tr class="warn"><td>${specTd(r)}</td><td class="num">${num(r.declared)}</td><td class="num">${num(r.theory)}</td>${diffTd(r.diff)}</tr>`; });
-      okRows.forEach(r=>{ tbl+=`<tr class="tanaok-${i}" style="display:none"><td>${specTd(r)}</td><td class="num">${num(r.declared)}</td><td class="num">${num(r.theory)}</td>${diffTd(0)}</tr>`; });
+      tbl+='<div class="tblwrap" style="margin-top:9px"><table class="stbl" style="min-width:0"><thead><tr><th>規格</th><th class="num">申告</th><th class="num">理論</th><th class="num">差異</th><th></th></tr></thead><tbody>';
+      diffRows.forEach(r=>{ tbl+=`<tr class="warn" style="cursor:pointer" title="クリックで差異の内訳" onclick="openTanaDiff(${i},${r._ri})"><td>${specTd(r)}</td><td class="num">${num(r.declared)}</td><td class="num">${num(r.theory)}</td>${diffTd(r.diff)}<td style="color:var(--sub);font-size:11px">🔍</td></tr>`; });
+      okRows.forEach(r=>{ tbl+=`<tr class="tanaok-${i}" style="display:none;cursor:pointer" title="クリックで内訳" onclick="openTanaDiff(${i},${r._ri})"><td>${specTd(r)}</td><td class="num">${num(r.declared)}</td><td class="num">${num(r.theory)}</td>${diffTd(0)}<td style="color:var(--sub);font-size:11px">🔍</td></tr>`; });
       tbl+='</tbody></table></div>';
       if(okRows.length) tbl+=`<button class="vbtn" style="flex:none;width:100%;margin-top:8px" onclick="toggleTanaOk(${i},this,${okRows.length})">▸ 一致${okRows.length}規格を表示</button>`;
     }
@@ -1269,6 +1278,52 @@ function tanaoroshiHtml(){
   html+='</div>';
   return html;
 }
+/* ===== 差異の内訳モーダル（棚卸チェック規格行クリック） ===== */
+function openTanaDiff(ti,ri){
+  const t=TANAOROSHI[ti]; if(!t) return;
+  const r=(t.rows||[])[ri]; if(!r) return;
+  const mk=marketOf(t.market);
+  const isSuitei=!!(mk&&mk.stockMethod==="推定");
+  const spec=[r.product,r.grade].filter(Boolean).join(" ")+(sizeLabel(r)?" ・"+sizeLabel(r):"");
+  const diff=Number(r.diff)||0;
+  $("tdTitle").textContent="🔍 差異の内訳: "+(t.market||"");
+  const srcLink=s=>s?(/^https?:/.test(s)?`<a href="${esc(s)}" target="_blank" style="font-size:10.5px;font-weight:800">📄 開く</a>`:`<span class="estnote">📄 ${esc(s)}</span>`):"";
+  let body=`<div class="dethead" style="margin-bottom:12px"><div class="dn" style="font-size:14px">${esc(spec)}</div>
+    <div class="dm">${diff===0?'<span class="badge stale-ok">✓ 差異なし</span>':`<span class="badge wstale">差異 ${diff>0?"+":""}${num(diff)}束</span>`}</div></div>`;
+  // 申告 ⇔ 理論（出典付き）
+  body+='<div class="vcmp" style="margin-bottom:12px">';
+  body+=`<div class="vcol"><div class="vl">📋 市場申告</div><div class="vv">${num(r.declared)}<small>束</small></div><div class="estnote">棚卸日 ${esc(t.asofDate||"—")}</div>${r.declaredSrc?`<div style="margin-top:3px">${srcLink(r.declaredSrc)}</div>`:""}</div>`;
+  body+='<div class="vmid">⇔</div>';
+  body+=`<div class="vcol"><div class="vl">🧮 理論在庫</div><div class="vv">${num(r.theory)}<small>束</small></div>${r.theoryDate?`<div class="estnote">${esc(r.theoryDate)}時点</div>`:""}<div style="margin-top:3px">${isSuitei?'<span class="estnote">アンカー＋搬入−販売の推定</span>':(srcLink(r.theorySrc)||"")}</div></div>`;
+  body+='</div>';
+  const mv=r.move;
+  const hasDetail=(mv!==undefined&&mv!==null)&&(r.expected!==undefined&&r.expected!==null);
+  if(!hasDetail){
+    body+='<div class="empty" style="padding:22px 0"><div class="big">📭</div>内訳データなし（次回取込で生成されます）</div>';
+  } else {
+    const m2=mv||{};
+    const days=(m2.from&&m2.to)?daysBetween(m2.to,m2.from):null;
+    body+=`<div class="sechead">🔀 その間の動き${(m2.from||m2.to)?`（${esc(m2.from||"?")} → ${esc(m2.to||"?")}${days!=null?"・"+days+"日間":""}）`:""}</div>`;
+    body+=`<div class="vcmp" style="margin-bottom:12px">
+      <div class="vcol"><div class="vl">＋搬入（納品書DB）</div><div class="vv">${num(m2.inflow)}<small>束</small></div><div class="estnote">${num(m2.inflowN)}件</div></div>
+      <div class="vcol"><div class="vl">−販売（精算書明細）</div><div class="vv">${num(m2.sold)}<small>束</small></div><div class="estnote">${num(m2.soldN)}件</div></div>
+    </div>`;
+    const res=Number(r.residual)||0, soldv=Number(m2.sold)||0;
+    body+=`<div class="trend" style="font-size:13px;font-weight:800;padding:12px 14px;margin-bottom:10px;text-align:center;line-height:1.9">
+      期待値 = 申告 ${num(r.declared)} ＋ 搬入 ${num(m2.inflow)} − 販売 ${num(m2.sold)} = <b>${num(r.expected)}束</b><br>
+      <span style="font-size:12px">理論 ${num(r.theory)}束 との残差 <b style="color:${res===0?"var(--ok)":"var(--warn)"}">${res>0?"+":""}${num(res)}束</b></span>
+    </div>`;
+    let judge="";
+    if(res===0) judge='<div class="trend" style="background:#e7f4ec;border:1px solid #cfe8d8;color:var(--ok);font-weight:800;font-size:12.5px;padding:12px 14px;line-height:1.7">✅ 差異は期間中の売買で説明がつきます（時差によるもの・実質問題なし）</div>';
+    else if(soldv===0) judge=`<div class="trend" style="background:#fbeed6;border:1px solid #eeddb8;color:#8a5a12;font-weight:800;font-size:12.5px;padding:12px 14px;line-height:1.7">⚠ 残差${num(Math.abs(res))}束。この期間の販売明細が未取込の可能性が高いです（精算書が貯まると解消）</div>`;
+    else judge=`<div class="trend" style="background:#fbeed6;border:1px solid #eeddb8;color:#8a5a12;font-weight:800;font-size:12.5px;padding:12px 14px;line-height:1.7">⚠ 残差${num(Math.abs(res))}束が未説明。未取込の精算書・帳票の読取差・現物ズレのいずれか。元PDFで確認してください</div>`;
+    body+=judge;
+  }
+  body+='<div class="estnote" style="display:block;margin-top:12px;line-height:1.7">※出典: 申告=棚卸明細PDF／理論=元落・預材帳票 or 推定計算／搬入=納品書DB／販売=精算書明細（sales_lines）</div>';
+  $("tdBody").innerHTML=body;
+  $("tdWrap").classList.add("show");
+}
+
 function toggleTanaOk(i,btn,n){
   let shown=false;
   document.querySelectorAll(".tanaok-"+i).forEach(tr=>{ shown=tr.style.display==="none"; tr.style.display=shown?"":"none"; });
@@ -1653,9 +1708,15 @@ function loadMock(){
     ],
     tanaoroshi:[
       {market:"丸宇木材市売（株）北浜市場",asofDate:"2026-09-30",snapNote:"棚卸日以降の搬入1件（10/2着・2束）は理論在庫に含めていません",declaredTotal:88,theoryTotal:90,ok:false,rows:[
-        {product:"桧フローリング",grade:"丸節",thickness:15,width:120,length:4000,declared:40,theory:43,diff:-3},
-        {product:"桧羽目板",grade:"丸節",thickness:12,width:120,length:4000,declared:8,theory:7,diff:1},
-        {product:"桧フローリング",grade:"特上小",thickness:15,width:120,length:4000,declared:25,theory:25,diff:0},
+        {product:"桧フローリング",grade:"丸節",thickness:15,width:120,length:4000,declared:40,theory:43,diff:-3,
+         declaredSrc:"丸宇北浜_棚卸_20260930.pdf",theorySrc:"",theoryDate:"2026-10-05",
+         move:{from:"2026-09-30",to:"2026-10-05",inflow:12,inflowN:2,sold:9,soldN:3},expected:43,residual:0},
+        {product:"桧羽目板",grade:"丸節",thickness:12,width:120,length:4000,declared:8,theory:7,diff:1,
+         declaredSrc:"丸宇北浜_棚卸_20260930.pdf",theorySrc:"",theoryDate:"2026-10-05",
+         move:{from:"2026-09-30",to:"2026-10-05",inflow:0,inflowN:0,sold:0,soldN:0},expected:8,residual:-1},
+        {product:"桧フローリング",grade:"特上小",thickness:15,width:120,length:4000,declared:25,theory:25,diff:0,
+         declaredSrc:"丸宇北浜_棚卸_20260930.pdf",theorySrc:"",theoryDate:"2026-10-05",
+         move:{from:"2026-09-30",to:"2026-10-05",inflow:6,inflowN:1,sold:6,soldN:2},expected:25,residual:0},
         {product:"桧フローリング",grade:"無節",thickness:15,width:120,length:4000,declared:10,theory:10,diff:0},
         {product:"桧スノコ板",grade:"丸節",thickness:12,width:120,length:2000,declared:5,theory:5,diff:0}
       ]}
