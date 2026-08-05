@@ -650,6 +650,7 @@ const SUJI_HELP={
   C5:"前回の在庫＋こちらの出荷−市場での販売＝今回の在庫、が合いません。この鎖のどこかに漏れがあります。",
   C6:"市場での実売単価が、当社の設定価格表を下回っています。",
   C7:"在庫はあるのに長期間まったく売れていない規格です。市場に実際に出ているか確認する価値があります。",
+  C8:"精算書の明細行で「数量×単価」が金額と合いません。読み取りミス（枚単価と束単価の取り違え等）の疑いです。",
 };
 function sujiRows(){
   const all=(ANOMALIES&&ANOMALIES.rows)||[];
@@ -664,7 +665,8 @@ function renderSuji(){
   let html='<div class="sechead">🩺 数字チェック（市売の鎖）</div>';
   html+='<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:12px 14px;line-height:1.7;margin-bottom:10px">'
     +'「こちらの出荷 → 市場の在庫 → 市場での販売 → 精算書 → 手取り」が数字として矛盾していないかを毎朝まとめて検算します。'
-    +'新しい矛盾が出たときだけLINEでお知らせします（1日1通）。ここで「確認済」「対象外」を付けても再通知は増えません（同じ指摘は元々二度鳴りません）。</div>';
+    +'新しい矛盾が出たときだけLINEでお知らせします（1日1通）。ここで「確認済」「対象外」を付けても再通知は増えません（同じ指摘は元々二度鳴りません）。'
+    +'指摘の元になった数字が直ると、翌朝の検査で自動的に「解消」に変わります。</div>';
 
   html+='<div class="sumgrid">';
   html+=`<div class="sumcard" style="--cc:${openHigh.length?'var(--danger)':'var(--ok)'}"><div class="th">重大（未処理）</div><div class="val">${num(openHigh.length)}<small>件</small></div><div class="sub2">${openHigh.length?'金額・数量が合っていません':'金額の壊れなし'}</div></div>`;
@@ -703,7 +705,7 @@ function renderSuji(){
   html+='<div class="tblwrap"><table class="stbl"><thead><tr><th>重大度</th><th>検査</th><th>対象</th><th>内容</th><th class="num">差</th><th>状態</th></tr></thead><tbody>';
   rows.forEach(r=>{
     const sv=SUJI_SEV[r.severity]||SUJI_SEV.mid;
-    const done=(r.state==="確認済"||r.state==="対象外");
+    const done=(r.state==="確認済"||r.state==="対象外"||r.state==="解消");
     html+=`<tr${r.severity==="high"&&!done?' class="warn"':''}>
       <td style="white-space:nowrap;font-weight:900;color:${sv.color}">${sv.mark}${esc(sv.label)}</td>
       <td style="white-space:nowrap;font-weight:800">${esc(r.checkName)}</td>
