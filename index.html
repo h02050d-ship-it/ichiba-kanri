@@ -260,6 +260,7 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
   <button class="tab" data-tab="shortage">⚠ 不足</button>
   <button class="tab" data-tab="price">💴 価格</button>
   <button class="tab" data-tab="tana">📋 棚卸</button>
+  <button class="tab" data-tab="suji">🩺 数字チェック</button>
   <button class="tab" data-tab="settings">⚙ 設定･検証</button>
 </div>
 
@@ -456,6 +457,8 @@ let tanaSel="";          // 棚卸タブで選択中の期（asofDate）
 let RITAI_VIEW=[];       // 滞留タブに現在表示中の行（販売履歴モーダル参照用）
 let PRICECHECK={since:"",fetchedAt:"",sales:{byMarket:[],badLines:[]},nouhin:{byCustomer:[],badLines:[]},note:""};
 let PRICESEL=null;  /* 価格タブで選択中の市場（クリックで明細ドリルダウン） */
+let ANOMALIES={rows:[],open:0,high:0};  /* 数字チェックの異常台帳 */
+let sujiFilter="open";  /* open=未処理のみ / all=全部 */
 const TANA_FOLDER_URL="https://drive.google.com/drive/folders/1mhHew_SE07KA3nJxorWXaiiq_PHtD0rb";
 let SHEET_URL="", TODAY="", FYSTART="";
 let TAB="summary";
@@ -564,6 +567,7 @@ function applyData(j){
   SALESHISTORY=j.salesHistory||[]; TANASUMMARY=j.tanaoroshiSummary||[];
   REFILL=j.refill||{today:"",markets:[],blind:[],totals:{out:0,red:0,yellow:0,monthlyValueAtRisk:0},params:{}};
   PRICECHECK=j.priceCheck||{since:"",fetchedAt:"",sales:{byMarket:[],badLines:[]},nouhin:{byCustomer:[],badLines:[]},note:""};
+  ANOMALIES=j.anomalies||{rows:[],open:0,high:0};
   SHEET_URL=j.sheetUrl||""; TODAY=j.today||todayStr(); FYSTART=j.fyStart||"";
 }
 
@@ -632,7 +636,95 @@ function render(){
   else if(TAB==="shortage") renderShortage();
   else if(TAB==="price") renderPrice();
   else if(TAB==="tana") renderTana();
+  else if(TAB==="suji") renderSuji();
   else if(TAB==="settings") renderSettings();
+}
+
+/* ===== 画面 🩺 数字チェック（市売の鎖 整合性検査の異常台帳） ===== */
+const SUJI_SEV={high:{mark:"🔴",label:"重大",color:"var(--danger)"},mid:{mark:"🟡",label:"要確認",color:"var(--warn)"},low:{mark:"🔵",label:"気づき",color:"var(--info)"}};
+const SUJI_HELP={
+  C1:"定期的に届くはずの精算書が、通常の間隔を大きく過ぎても台帳に入っていません。紙精算書の未スキャンか取込エラーを疑います。",
+  C2:"精算書の鑑（合計欄）と、明細行の合計が一致しません。明細の読み取り漏れか行の取りこぼしです。",
+  C3:"その回の手数料率が、その市場の通常の率から外れています。",
+  C4:"アンカー在庫＋搬入より販売のほうが多く、在庫が負になっています。品名・等級の解釈ズレか、搬入側の取込漏れです。",
+  C5:"前回の在庫＋こちらの出荷−市場での販売＝今回の在庫、が合いません。この鎖のどこかに漏れがあります。",
+  C6:"市場での実売単価が、当社の設定価格表を下回っています。",
+  C7:"在庫はあるのに長期間まったく売れていない規格です。市場に実際に出ているか確認する価値があります。",
+};
+function sujiRows(){
+  const all=(ANOMALIES&&ANOMALIES.rows)||[];
+  return sujiFilter==="all"?all:all.filter(r=>r.state==="未確認"||r.state==="未通知");
+}
+function renderSuji(){
+  const rows=sujiRows();
+  const all=(ANOMALIES&&ANOMALIES.rows)||[];
+  const open=all.filter(r=>r.state==="未確認"||r.state==="未通知");
+  const openHigh=open.filter(r=>r.severity==="high");
+
+  let html='<div class="sechead">🩺 数字チェック（市売の鎖）</div>';
+  html+='<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:12px 14px;line-height:1.7;margin-bottom:10px">'
+    +'「こちらの出荷 → 市場の在庫 → 市場での販売 → 精算書 → 手取り」が数字として矛盾していないかを毎朝まとめて検算します。'
+    +'新しい矛盾が出たときだけLINEでお知らせします（1日1通）。ここで「確認済」「対象外」を付けても再通知は増えません（同じ指摘は元々二度鳴りません）。</div>';
+
+  html+='<div class="sumgrid">';
+  html+=`<div class="sumcard" style="--cc:${openHigh.length?'var(--danger)':'var(--ok)'}"><div class="th">重大（未処理）</div><div class="val">${num(openHigh.length)}<small>件</small></div><div class="sub2">${openHigh.length?'金額・数量が合っていません':'金額の壊れなし'}</div></div>`;
+  html+=`<div class="sumcard" style="--cc:var(--warn)"><div class="th">未処理ぜんぶ</div><div class="val">${num(open.length)}<small>件</small></div><div class="sub2">台帳${num(all.length)}件中</div></div>`;
+  html+='</div>';
+
+  if(!all.length){
+    html+='<div class="empty"><div class="big">🩺</div>まだ検査結果がありません<br><span style="font-size:11.5px">毎朝の取込タスクが検査を回すと、ここに矛盾だけが並びます</span></div>';
+    $("list").innerHTML=html; return;
+  }
+
+  // 検査ごとのサマリー
+  const g={};
+  open.forEach(r=>{ const a=g[r.checkId]||(g[r.checkId]={id:r.checkId,name:r.checkName,sev:r.severity,n:0}); a.n++; if(r.severity==="high") a.sev="high"; });
+  const ord={high:0,mid:1,low:2};
+  const gk=Object.keys(g).sort((a,b)=>(ord[g[a].sev]-ord[g[b].sev])||a.localeCompare(b));
+  if(gk.length){
+    html+='<div class="sechead">検査ごとの未処理件数</div><div class="mgrid">';
+    gk.forEach(k=>{ const a=g[k]; const sv=SUJI_SEV[a.sev]||SUJI_SEV.mid;
+      html+=`<div class="mcard" style="border-left:5px solid ${sv.color}"><div style="font-weight:900;font-size:13.5px">${sv.mark} ${esc(a.name)} <span style="color:${sv.color}">${num(a.n)}件</span></div>`
+        +`<div style="font-size:11.5px;color:var(--sub);font-weight:700;line-height:1.6;margin-top:6px">${esc(SUJI_HELP[a.id]||"")}</div></div>`;
+    });
+    html+='</div>';
+  }
+
+  html+='<div class="sechead">指摘一覧</div>';
+  html+=`<div style="display:flex;gap:6px;margin-bottom:8px">
+    <button class="tab${sujiFilter==="open"?" on":""}" onclick="sujiFilter='open';render()">未処理のみ ${num(open.length)}</button>
+    <button class="tab${sujiFilter==="all"?" on":""}" onclick="sujiFilter='all';render()">すべて ${num(all.length)}</button>
+  </div>`;
+
+  if(!rows.length){
+    html+='<div class="empty"><div class="big">✅</div>未処理の指摘はありません</div>';
+    $("list").innerHTML=html; return;
+  }
+  html+='<div class="tblwrap"><table class="stbl"><thead><tr><th>重大度</th><th>検査</th><th>対象</th><th>内容</th><th class="num">差</th><th>状態</th></tr></thead><tbody>';
+  rows.forEach(r=>{
+    const sv=SUJI_SEV[r.severity]||SUJI_SEV.mid;
+    const done=(r.state==="確認済"||r.state==="対象外");
+    html+=`<tr${r.severity==="high"&&!done?' class="warn"':''}>
+      <td style="white-space:nowrap;font-weight:900;color:${sv.color}">${sv.mark}${esc(sv.label)}</td>
+      <td style="white-space:nowrap;font-weight:800">${esc(r.checkName)}</td>
+      <td style="font-weight:800">${esc(r.market)}${r.date?`<br><span style="font-size:11px;color:var(--sub)">${esc(fmtDate(r.date))}</span>`:""}</td>
+      <td style="font-size:11.5px;line-height:1.6">${esc(r.message)}</td>
+      <td class="num" style="white-space:nowrap">${esc(r.expected||"")}<br>→ ${esc(r.actual||"")}</td>
+      <td style="white-space:nowrap">${done
+        ? `<span style="font-size:11px;color:var(--sub);font-weight:800">${esc(r.state)}</span><br><button class="linkbtn" onclick="setAnomalyState('${esc(r.id)}','未確認')">戻す</button>`
+        : `<button class="vbtn" onclick="setAnomalyState('${esc(r.id)}','確認済')">✔確認済</button><br><button class="linkbtn" onclick="setAnomalyState('${esc(r.id)}','対象外')">対象外にする</button>`}</td>
+    </tr>`;
+  });
+  html+='</tbody></table></div>';
+  $("list").innerHTML=html;
+}
+async function setAnomalyState(id,state){
+  try{
+    const j=await postAction({action:"setAnomalyState",id,state});
+    if(!j.ok) throw new Error(j.error||"更新できませんでした");
+    toast(state+"にしました");
+    await fetchAll();
+  }catch(e){ toast("エラー: "+e.message); }
 }
 
 /* ===== 画面① 市場サマリー一覧 ===== */
