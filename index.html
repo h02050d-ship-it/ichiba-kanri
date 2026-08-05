@@ -256,6 +256,7 @@ table.stbl td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight
   <button class="tab on" data-tab="summary">🏬 市場一覧</button>
   <button class="tab" data-tab="detail">🔎 市場詳細</button>
   <button class="tab" data-tab="ritai">⏳ 滞留</button>
+  <button class="tab" data-tab="refill">🚀 補充提案</button>
   <button class="tab" data-tab="shortage">⚠ 不足</button>
   <button class="tab" data-tab="price">💴 価格</button>
   <button class="tab" data-tab="tana">📋 棚卸</button>
@@ -449,6 +450,8 @@ const USE_MOCK = (GAS_URL==='__GAS_URL__' || !/^https?:/.test(GAS_URL));
 
 /* ===== 状態 ===== */
 let MARKETS=[], SALES=[], STOCK=[], STOCKBYMARKET=[], RITAI=[], SHORTAGE=[], NAITO={updated:"",rows:[]}, DICT=[], INGESTLOG=[], ESTIMATED=[], ANCHORS=[], TANAOROSHI=[], SALESHISTORY=[], TANASUMMARY=[];
+let REFILL={today:"",markets:[],blind:[],totals:{out:0,red:0,yellow:0,monthlyValueAtRisk:0},params:{}};
+let refillFilter="all";   // 補充提案タブの絞り込み（all/out/red/yellow）
 let tanaSel="";          // 棚卸タブで選択中の期（asofDate）
 let RITAI_VIEW=[];       // 滞留タブに現在表示中の行（販売履歴モーダル参照用）
 let PRICECHECK={since:"",fetchedAt:"",sales:{byMarket:[],badLines:[]},nouhin:{byCustomer:[],badLines:[]},note:""};
@@ -559,6 +562,7 @@ function applyData(j){
   RITAI=j.ritai||[]; SHORTAGE=j.shortage||[]; NAITO=j.naito||{updated:"",rows:[]}; DICT=j.dict||[]; INGESTLOG=j.ingestLog||[];
   ESTIMATED=j.estimated||[]; ANCHORS=j.anchors||[]; TANAOROSHI=j.tanaoroshi||[];
   SALESHISTORY=j.salesHistory||[]; TANASUMMARY=j.tanaoroshiSummary||[];
+  REFILL=j.refill||{today:"",markets:[],blind:[],totals:{out:0,red:0,yellow:0,monthlyValueAtRisk:0},params:{}};
   PRICECHECK=j.priceCheck||{since:"",fetchedAt:"",sales:{byMarket:[],badLines:[]},nouhin:{byCustomer:[],badLines:[]},note:""};
   SHEET_URL=j.sheetUrl||""; TODAY=j.today||todayStr(); FYSTART=j.fyStart||"";
 }
@@ -624,6 +628,7 @@ function render(){
   if(TAB==="summary") renderSummary();
   else if(TAB==="detail") renderDetail();
   else if(TAB==="ritai") renderRitai();
+  else if(TAB==="refill") renderRefill();
   else if(TAB==="shortage") renderShortage();
   else if(TAB==="price") renderPrice();
   else if(TAB==="tana") renderTana();
@@ -885,6 +890,75 @@ function openSalesHist(vi){
 function chip(k,label){ return `<button class="pchip${ritaiFilter===k?" on":""}" data-r="${k}">${label}</button>`; }
 function bindChips(){ document.querySelectorAll(".pchip[data-r]").forEach(b=>b.onclick=()=>{ ritaiFilter=b.dataset.r; render(); }); }
 function bindFaxButtons(){ document.querySelectorAll(".faxbtn[data-fax-market]").forEach(b=>b.onclick=()=>openStaleFax(b.dataset.faxMarket)); }
+
+/* ===== 画面 補充提案（売れ筋×在庫薄＝滞留の逆・機会損失側） ===== */
+function rfMeta(lv){
+  if(lv==="out")   return {label:"🚨欠品中", cc:"var(--danger)", bg:"#fbe9e1"};
+  if(lv==="red")   return {label:"🔴今週",   cc:"var(--danger)", bg:"#fdf3e0"};
+  return              {label:"🟡まもなく",  cc:"var(--warn)",   bg:"var(--card)"};
+}
+function rfChip(k,label,n){ return `<button class="pchip${refillFilter===k?" on":""}" data-rf="${k}">${label}${n!=null?" "+n:""}</button>`; }
+function bindRfChips(){ document.querySelectorAll(".pchip[data-rf]").forEach(b=>b.onclick=()=>{ refillFilter=b.dataset.rf; render(); }); }
+function renderRefill(){
+  const T=REFILL.totals||{out:0,red:0,yellow:0,monthlyValueAtRisk:0};
+  const P=REFILL.params||{};
+  const redC=P.redCover||1.25, yelC=P.yellowCover||2.5, tgtC=P.targetCover||3;
+  let html='<div class="pchips">'+rfChip("all","すべて")+rfChip("out","🚨欠品中",T.out)+rfChip("red","🔴今週",T.red)+rfChip("yellow","🟡まもなく",T.yellow)+'</div>';
+  html+=`<div class="sumgrid">
+    <div class="sumcard" style="--cc:var(--danger)"><div class="th">欠品中</div><div class="val">${num(T.out)}<small>規格</small></div><div class="sub2">売れているのに在庫ゼロ</div></div>
+    <div class="sumcard" style="--cc:var(--warn)"><div class="th">今週出さないと切れる</div><div class="val">${num(T.red)}<small>規格</small></div><div class="sub2">残${redC}か月以内</div></div>
+    <div class="sumcard" style="--cc:var(--info)"><div class="th">まもなく</div><div class="val">${num(T.yellow)}<small>規格</small></div><div class="sub2">残${yelC}か月以内</div></div>
+    <div class="sumcard" style="--cc:var(--accent)"><div class="th">月商リスク</div><div class="val" style="font-size:20px">¥${yen(T.monthlyValueAtRisk)}</div><div class="sub2">欠品・切迫分の月商合計</div></div>
+  </div>`;
+  html+=`<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:11px 14px;line-height:1.7;margin-bottom:10px">
+    <b>在庫 ÷ 月販束数 ＝ 残りカバー月数</b>。市場に届くまで3〜4週かかるため、残${redC}か月以内は「今週動かないと確実に切れる」水域です（次の通知まで1週間＋リードタイム）。
+    推奨束数は残りを<b>${tgtC}か月分</b>に戻す量。<b>毎週月曜にLINE通知</b>が飛びます（文面はご自身で作成してください）。
+    月販は2026年4月以降の精算書明細から算出。<span style="color:var(--danger)">※要確認</span>＝在庫がマイナス＝読取差または精算書の取込漏れの可能性。</div>`;
+  const mks=(REFILL.markets||[]).map(m=>{
+    const rows=(m.rows||[]).filter(r=>refillFilter==="all"||r.level===refillFilter);
+    return Object.assign({},m,{rows:rows});
+  }).filter(m=>m.rows.length);
+  if(!mks.length){
+    html+='<div class="empty" style="padding:40px 0"><div class="big">✅</div>該当する規格はありません<br><span style="font-size:11px">売れ筋の在庫は足りています</span></div>';
+  }
+  mks.forEach(m=>{
+    let mv=0; m.rows.forEach(r=>{ if(r.level!=="yellow") mv+=Number(r.monthlyValue)||0; });
+    html+=`<div class="rgrouphd"><div class="gname">${esc(m.market)}<span class="gsub">${m.rows.length}件${mv?"・月商リスク ¥"+yen(mv):""}${m.obsStart?"・実績"+esc(m.obsStart)+"〜":""}</span></div></div>`;
+    html+='<div class="tblwrap"><table class="stbl"><thead><tr>'
+      + '<th>状態</th><th>規格</th><th class="num">在庫</th><th class="num">月販</th><th class="num">残り</th>'
+      + '<th class="num">推奨</th><th class="num">運賃/束</th><th class="num">月商</th><th>最終販売</th></tr></thead><tbody>';
+    m.rows.forEach(r=>{
+      const mt=rfMeta(r.level);
+      const stockTxt = r.negative ? `<span style="color:var(--danger)">${num(r.stock)} ※要確認</span>` : num(r.stock);
+      const coverTxt = r.level==="out" ? '<span style="color:var(--danger)">0</span>' : (r.cover+"か月");
+      html+=`<tr style="background:${mt.bg}">
+        <td style="white-space:nowrap;font-weight:800">${mt.label}${r.spot?'<br><span style="font-size:10px;color:var(--sub);font-weight:700">単発かも</span>':''}</td>
+        <td>${esc(r.specLabel||"")}</td>
+        <td class="num">${stockTxt}</td>
+        <td class="num">${r.perMonth}束</td>
+        <td class="num">${coverTxt}</td>
+        <td class="num"><b>${num(r.suggest)}</b>束</td>
+        <td class="num">${r.freightPerBundle?("¥"+yen(r.freightPerBundle)):"—"}</td>
+        <td class="num">¥${yen(r.monthlyValue)}</td>
+        <td style="white-space:nowrap">${esc(r.lastSale||"")}<br><span style="font-size:10px;color:var(--sub)">${num(r.sinceLast)}日前・${num(r.times)}回</span></td>
+      </tr>`;
+    });
+    html+='</tbody></table></div>';
+  });
+  // 検知できていない在庫（販売速度が測れない＝提案が出ない市場）
+  const blind=REFILL.blind||[];
+  if(blind.length){
+    let bb=0; blind.forEach(b=>bb+=Number(b.bundles)||0);
+    html+='<div class="sechead" style="margin-top:18px">🕳 まだ検知できていない在庫（販売履歴なし）</div>';
+    html+=`<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:11px 14px;line-height:1.7;margin-bottom:10px">
+      精算書明細（sales_lines）が未取込の規格は<b>売れ行きが測れないので提案が出ません</b>。計 <b>${num(bb)}束</b>。
+      沈黙＝在庫十分ではなく「見えていない」状態です。過去分の精算書をバックフィルするとここが提案側に移ります。</div>`;
+    html+='<div class="tblwrap"><table class="stbl"><thead><tr><th>市場</th><th class="num">規格数</th><th class="num">束数</th></tr></thead><tbody>';
+    blind.forEach(b=>{ html+=`<tr><td>${esc(b.market)}</td><td class="num">${num(b.specs)}</td><td class="num">${num(b.bundles)}</td></tr>`; });
+    html+='</tbody></table></div>';
+  }
+  $("list").innerHTML=html; bindRfChips();
+}
 
 /* ===== 画面④ 不足在庫 ===== */
 function renderShortage(){
