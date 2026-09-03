@@ -820,7 +820,7 @@ function renderDetail(){
     else feeHtml=`<span>手数料 <b>${esc(s.feeRateShown)}</b></span>`;
   }
   html+=`<div class="dethead"><div class="dn">${esc(m.market)}</div>
-    <div class="dm">${shoryuBadge(m.shoryu)}<span>在庫把握 <b>${esc(m.stockMethod||"—")}</b></span>${estimatedOf(m.market)?'<span class="badge westim">⚠推定在庫</span>':""}${sb&&sb.latestSnapDate?`<span>最新スナップ <b>${esc(sb.latestSnapDate)}</b></span>`:""}${feeHtml}${m.driveFolder?`<a class="vpdf" href="${esc(m.driveFolder)}" target="_blank" style="padding:6px 10px">📁 精算書フォルダ</a>`:""}</div></div>`;
+    <div class="dm">${shoryuBadge(m.shoryu)}<span>在庫把握 <b>${esc(m.stockMethod||"—")}</b></span>${m.directShip?'<span class="badge" title="預材なし・売上のみ取込。欠品/滞留判定の対象外">🚚直送(在庫なし)</span>':""}${estimatedOf(m.market)?'<span class="badge westim">⚠推定在庫</span>':""}${sb&&sb.latestSnapDate?`<span>最新スナップ <b>${esc(sb.latestSnapDate)}</b></span>`:""}${feeHtml}${m.driveFolder?`<a class="vpdf" href="${esc(m.driveFolder)}" target="_blank" style="padding:6px 10px">📁 精算書フォルダ</a>`:""}</div></div>`;
 
   // 月別売上＋内藤運賃（PCは横並び2カラム）
   html+='<div class="det2col"><div>';
@@ -1045,6 +1045,11 @@ function renderRefill(){
     });
     html+='</tbody></table></div>';
   });
+  // 直送拠点（在庫を持たない）は欠品判定の対象外＝沈黙が正常
+  const ds=REFILL.directShip||[];
+  if(ds.length){
+    html+=`<div class="trend" style="font-size:11.5px;color:var(--sub);font-weight:700;padding:11px 14px;line-height:1.7;margin:14px 0 10px">🚚 直送拠点（預材なし・売上のみ）は欠品判定の対象外: ${ds.map(esc).join("・")}</div>`;
+  }
   // 検知できていない在庫（販売速度が測れない＝提案が出ない市場）
   const blind=REFILL.blind||[];
   if(blind.length){
