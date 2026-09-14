@@ -1588,6 +1588,25 @@ document.querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>$(b.dataset.c
 document.querySelectorAll(".mwrap").forEach(w=>w.addEventListener("click",e=>{ if(e.target===w) w.classList.remove("show"); }));
 function fillMarketList(){ $("marketList").innerHTML=MARKETS.map(m=>`<option value="${esc(m.market)}">`).join(""); }
 
+/* ===== 保存前のうっかり確認（根拠が無ければ通す） ===== */
+// 寸法レンジ: 厚10〜40・幅50〜300・長500〜6000（mm）。空欄は見ない
+function dimRangeConfirm(t,w,l){
+  const chk=[["厚さ",t,10,40],["幅",w,50,300],["長さ",l,500,6000]];
+  for(const [nm,v,lo,hi] of chk){
+    if(v===""||v==null) continue; const n=Number(v); if(!isFinite(n)) continue;
+    if(n<lo||n>hi){ if(!confirm(`${nm} ${v} は通常ありません（mm単位・通常は${lo}〜${hi}）。このまま保存しますか？`)) return false; }
+  }
+  return true;
+}
+// 同一規格か（品名/等級/厚/幅/長。入数は両方に値がある時だけ比べる）
+function specEq(a,b){
+  const s=v=>String(v==null?"":v).trim(), n=v=>{ const x=Number(v); return isFinite(x)&&s(v)!==""?x:s(v); };
+  if(s(a.product)!==s(b.product)||s(a.grade)!==s(b.grade)) return false;
+  if(n(a.thickness)!==n(b.thickness)||n(a.width)!==n(b.width)||n(a.length)!==n(b.length)) return false;
+  if(s(a.irikazu)!==""&&s(b.irikazu)!==""&&n(a.irikazu)!==n(b.irikazu)) return false;
+  return true;
+}
+
 /* ===== 必要数量 モーダル ===== */
 function openShortageNew(){
   editShId=null; $("shTitle").textContent="必要数量を追加"; fillMarketList();
@@ -1611,6 +1630,7 @@ $("shSave").onclick=async()=>{
   const need=parseInt($("shNeed").value,10);
   if(!product){ $("shErr").textContent="品名を入力してください"; return; }
   if(!(need>=0)){ $("shErr").textContent="必要束数を入力してください"; return; }
+  if(!dimRangeConfirm($("shThick").value.trim(),$("shWidth").value.trim(),$("shLength").value.trim())) return;
   const shortage={ id:editShId||"", market:$("shMarket").value.trim(), product, grade:$("shGrade").value.trim(),
     thickness:$("shThick").value.trim(), width:$("shWidth").value.trim(), length:$("shLength").value.trim(),
     need_bundles:need, note:$("shNote").value.trim() };
@@ -1684,6 +1704,13 @@ $("stSave").onclick=async()=>{
   if(!market){ $("stErr").textContent="市場を入力してください"; return; }
   if(!product){ $("stErr").textContent="品名を入力してください"; return; }
   if(!(bundles>=0)){ $("stErr").textContent="束数を入力してください"; return; }
+  if(!dimRangeConfirm($("stThick").value.trim(),$("stWidth").value.trim(),$("stLength").value.trim())) return;
+  { // 同一市場・同一規格・同一スナップ日の行が既にあれば二重計上のおそれ
+    const snap=$("stSnap").value.trim();
+    const spec={product,grade:$("stGrade").value.trim(),thickness:$("stThick").value.trim(),width:$("stWidth").value.trim(),length:$("stLength").value.trim(),irikazu:$("stIrikazu").value.trim()};
+    const dupe=snap?STOCK.find(r=>r.market===market&&r.id!==(editStId||"")&&String(lgv(r,"snapshotDate","snapshot_date")||"")===snap&&specEq(r,spec)):null;
+    if(dupe&&!confirm(`既に${num(dupe.bundles)}束の行があります（${snap}・同じ規格）。追加すると二重計上になります。続けますか？`)) return;
+  }
   const stock={ id:editStId||"", market, snapshot_date:$("stSnap").value, ingest_market_date:$("stIngest").value,
     product, grade:$("stGrade").value.trim(), thickness_mm:$("stThick").value.trim(), width_mm:$("stWidth").value.trim(), length_mm:$("stLength").value.trim(),
     irikazu:$("stIrikazu").value.trim(), bundles, volume_m3:$("stVolume").value.trim(), confirmed:$("stConfirmed").checked, note:$("stNote").value.trim() };
@@ -1734,6 +1761,14 @@ $("anSave").onclick=async()=>{
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $("anErr").textContent="棚卸日を入力してください"; return; }
   if(!product){ $("anErr").textContent="品名を入力してください"; return; }
   if(!(bundles>=0)){ $("anErr").textContent="実在庫束数を入力してください"; return; }
+  if(!dimRangeConfirm($("anThick").value.trim(),$("anWidth").value.trim(),$("anLength").value.trim())) return;
+  { // 同一市場・同一規格の推定在庫と±30%超ずれていれば桁の確認（推定が無ければ見ない）
+    const est=estimatedOf(market);
+    const spec={product,grade:$("anGrade").value.trim(),thickness:$("anThick").value.trim(),width:$("anWidth").value.trim(),length:$("anLength").value.trim(),irikazu:$("anIrikazu").value.trim()};
+    const er=est?(est.rows||[]).find(r=>specEq(r,spec)):null;
+    const e=er?Number(er.est):NaN;
+    if(isFinite(e)&&e>0&&Math.abs(bundles-e)>e*0.3&&!confirm(`推定在庫 ${num(e)}束に対し ${num(bundles)}束です。桁を確認してください。このまま保存しますか？`)) return;
+  }
   const anchor={ id:editAnId||"", market, anchor_date:date, product, grade:$("anGrade").value.trim(),
     thickness_mm:$("anThick").value.trim(), width_mm:$("anWidth").value.trim(), length_mm:$("anLength").value.trim(),
     irikazu:$("anIrikazu").value.trim(), bundles, note:$("anNote").value.trim() };
